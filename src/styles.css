@@ -2,7 +2,7 @@
   color: #1c1813;
   background: #e8dfd2;
   font-family: 'Avenir Next', 'Gill Sans', sans-serif;
-  line-height: 1.4;
+  line-height: 1.35;
   font-weight: 500;
   color-scheme: light;
   text-rendering: optimizeLegibility;
@@ -12,11 +12,17 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    linear-gradient(180deg, #ece6db 0%, #d8ccb9 100%);
+  background: linear-gradient(180deg, #ece6db 0%, #d8ccb9 100%);
 }
 
 button,
@@ -30,25 +36,30 @@ button {
 }
 
 .app-shell {
-  min-height: 100vh;
-  padding: 24px;
+  height: 100dvh;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .app-header {
-  margin: 0 auto 20px;
-  max-width: 1380px;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  flex: 0 0 auto;
 }
 
 .app-header__main {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
   align-items: flex-end;
+  gap: 12px;
 }
 
 .app-header h1 {
-  margin: 0 0 4px;
-  font-size: 2rem;
+  margin: 0 0 2px;
+  font-size: 1.95rem;
 }
 
 .app-header p {
@@ -65,13 +76,13 @@ button {
 .app-tabs {
   display: flex;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 12px;
   padding-bottom: 6px;
   border-bottom: 1px solid #c5b29a;
 }
 
 .tab-button {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px solid transparent;
   background: transparent;
   color: #4f3f32;
@@ -80,76 +91,125 @@ button {
 
 .tab-button--active {
   border-color: #a58b6f;
-  background: rgba(252, 249, 243, 0.88);
+  background: rgba(252, 249, 243, 0.92);
   color: #23170f;
 }
 
-.app-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 20px;
-  align-items: start;
-  max-width: 1380px;
+.app-content {
+  width: 100%;
+  max-width: 1320px;
   margin: 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tab-loading {
+  height: 100%;
+  border: 1px solid #c5b29a;
+  background: rgba(252, 249, 243, 0.5);
+}
+
+.tab-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.tab-scroll--settings {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.app-layout {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .board-panel {
   min-width: 0;
+  min-height: 0;
+  display: flex;
 }
 
 .board-frame {
-  padding: 28px 28px 18px;
+  width: 100%;
+  min-height: 0;
+  padding: 14px;
   background: #3f2913;
   border: 1px solid #26170a;
 }
 
 .board-layout {
+  --axis-col-size: 40px;
+  --axis-gap: 10px;
+  --board-size: 72vh;
+
+  height: 100%;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 16px;
-  align-items: stretch;
+  grid-template-columns: var(--axis-col-size) minmax(0, 1fr);
+  gap: var(--axis-gap);
+  align-items: center;
 }
 
 .board-grid-wrap {
   min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
 }
 
 .board-grid {
+  width: min(100%, var(--board-size));
+  aspect-ratio: 1;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
   border: 1px solid #8d8379;
 }
 
 .board-axis {
   display: grid;
   color: #efe8dc;
-  font-size: 2.3rem;
   font-weight: 700;
 }
 
 .board-axis--rows {
+  height: min(100%, var(--board-size));
   grid-template-rows: repeat(6, 1fr);
   align-items: center;
   justify-items: center;
+  font-size: 1.8rem;
 }
 
 .board-axis--columns {
+  width: min(100%, var(--board-size));
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  margin-top: 10px;
-  color: #efe8dc;
-  font-size: 2.1rem;
   justify-items: center;
+  font-size: 1.35rem;
 }
 
 .board-cell {
   position: relative;
-  aspect-ratio: 1;
   border: 1px solid #8d8379;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 7px;
   background: transparent;
   transition: background-color 160ms ease, outline-color 160ms ease;
 }
@@ -165,7 +225,7 @@ button {
 .board-cell--selectable:not(.board-cell--selected)::after {
   content: '';
   position: absolute;
-  inset: 8px;
+  inset: 5px;
   border: 2px dashed rgba(161, 118, 65, 0.4);
   pointer-events: none;
 }
@@ -185,7 +245,7 @@ button {
   width: 20%;
   aspect-ratio: 1;
   border-radius: 999px;
-  background: rgba(120, 145, 74, 0.85);
+  background: rgba(120, 145, 74, 0.88);
 }
 
 .checker-stack {
@@ -203,7 +263,7 @@ button {
 
 .checker {
   position: absolute;
-  width: 86%;
+  width: 88%;
   aspect-ratio: 1;
 }
 
@@ -236,18 +296,36 @@ button {
 }
 
 .side-panel {
+  min-height: 0;
   display: grid;
-  gap: 12px;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.side-panel--game {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.side-panel--settings {
+  width: min(780px, 100%);
+  margin: 0 auto;
 }
 
 .panel {
-  padding: 16px;
-  background: rgba(252, 249, 243, 0.92);
+  padding: 12px;
+  background: rgba(252, 249, 243, 0.94);
   border: 1px solid #bba894;
 }
 
+.panel--history {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .panel__header {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .panel__header--with-tooltip {
@@ -258,7 +336,7 @@ button {
 
 .panel__header h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.98rem;
 }
 
 .panel__text {
@@ -279,7 +357,7 @@ button {
 }
 
 .turn-banner {
-  padding: 12px;
+  padding: 10px;
   background: #2a1708;
   color: #f4eee2;
   border: 1px solid #1c1108;
@@ -292,7 +370,7 @@ button {
 
 .turn-banner p {
   margin: 0 0 4px;
-  font-size: 1.15rem;
+  font-size: 1.08rem;
   font-weight: 700;
 }
 
@@ -303,7 +381,7 @@ button {
 .action-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .action-chip {
@@ -313,7 +391,7 @@ button {
 }
 
 .button {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px solid #2f231a;
   background: #2f231a;
   color: #f5efe4;
@@ -339,43 +417,65 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
-.score-grid {
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.score-grid div {
-  padding: 10px;
+.score-compact {
+  margin-top: 10px;
   border: 1px solid #d4c6b6;
   background: #fffaf4;
 }
 
-.score-grid dt {
-  margin-bottom: 4px;
-  color: #5d4a39;
-  font-size: 0.9rem;
+.score-compact__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-bottom: 1px solid #d4c6b6;
 }
 
-.score-grid__term {
+.score-compact__table {
+  display: grid;
+}
+
+.score-compact__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 58px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid #ece0d2;
+}
+
+.score-compact__row:last-child {
+  border-bottom: none;
+}
+
+.score-compact__row--head {
+  color: #59483a;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.score-compact__label {
   display: flex;
   align-items: center;
   gap: 6px;
+  color: #4a392c;
+  font-size: 0.87rem;
 }
 
-.score-grid dd {
-  margin: 0;
-  font-size: 1.2rem;
+.score-compact__row span:nth-child(2),
+.score-compact__row span:nth-child(3) {
+  text-align: right;
   font-weight: 700;
+  color: #2d221a;
 }
 
 .settings-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .settings-row {
@@ -394,11 +494,12 @@ button {
 
 .history-list {
   margin: 0;
-  padding-left: 20px;
+  padding-left: 18px;
   display: grid;
-  gap: 8px;
-  max-height: 240px;
+  gap: 6px;
   overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .history-item {
@@ -417,14 +518,15 @@ button {
 
 .field-label {
   display: block;
-  margin: 10px 0 6px;
+  margin: 8px 0 4px;
   color: #5d4a39;
 }
 
 .session-textarea {
   width: 100%;
-  min-height: 120px;
-  padding: 10px;
+  min-height: 96px;
+  max-height: 220px;
+  padding: 8px;
   border: 1px solid #bba894;
   background: #fffaf4;
   resize: vertical;
@@ -441,15 +543,11 @@ button {
 }
 
 .pass-overlay__panel {
-  width: min(920px, 100%);
+  width: min(360px, 100%);
+  text-align: center;
   background: #f9f3e8;
   border: 1px solid #3b2815;
   padding: 20px;
-}
-
-.pass-overlay__panel {
-  width: min(360px, 100%);
-  text-align: center;
 }
 
 .pass-overlay__panel p {
@@ -514,18 +612,18 @@ button {
 .instructions-panel {
   max-width: 1040px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 16px;
   border: 1px solid #bba894;
   background: rgba(252, 249, 243, 0.94);
 }
 
 .instructions-panel__header {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .instructions-panel__header h2 {
   margin: 0 0 4px;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
 }
 
 .instructions-panel__header p {
@@ -538,16 +636,16 @@ button {
 }
 
 .instructions-heading {
-  margin: 20px 0 10px;
+  margin: 18px 0 8px;
   color: #23170f;
 }
 
 .instructions-heading--1 {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
 }
 
 .instructions-heading--2 {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
 }
 
 .instructions-heading--3 {
@@ -555,25 +653,37 @@ button {
 }
 
 .instructions-paragraph {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
 
 .instructions-list {
-  margin: 0 0 14px;
-  padding-left: 22px;
+  margin: 0 0 12px;
+  padding-left: 20px;
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .instructions-divider {
-  margin: 18px 0;
+  margin: 16px 0;
   border: none;
   border-top: 1px solid #d4c6b6;
 }
 
+@media (max-width: 1100px) {
+  .app-layout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 10px;
+  }
+
+  .board-layout {
+    --board-size: 66vh;
+  }
+}
+
 @media (max-width: 960px) {
   .app-shell {
-    padding: 16px;
+    padding: 10px;
+    gap: 10px;
   }
 
   .app-header__main {
@@ -581,28 +691,46 @@ button {
     flex-direction: column;
   }
 
+  .app-header h1 {
+    font-size: 1.65rem;
+  }
+
+  .tab-scroll {
+    padding-right: 0;
+  }
+
   .app-layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(220px, 42%);
   }
 
   .board-frame {
-    padding: 16px 16px 12px;
+    padding: 10px;
   }
 
   .board-layout {
-    grid-template-columns: 36px minmax(0, 1fr);
-    gap: 8px;
+    --axis-col-size: 30px;
+    --axis-gap: 8px;
+    --board-size: 60vh;
   }
 
   .board-axis--rows {
-    font-size: 1.4rem;
+    font-size: 1.25rem;
   }
 
   .board-axis--columns {
-    font-size: 1.5rem;
+    font-size: 1.05rem;
+  }
+
+  .side-panel {
+    padding-right: 0;
   }
 
   .instructions-panel {
-    padding: 18px;
+    padding: 12px;
+  }
+
+  .session-textarea {
+    min-height: 84px;
   }
 }

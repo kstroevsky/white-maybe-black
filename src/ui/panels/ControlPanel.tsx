@@ -43,17 +43,47 @@ function getVictoryTermId(victory: Victory): GlossaryTermId | null {
 }
 
 function StatusSection() {
-  const { currentPlayer, interaction, moveNumber, selectedCell, victory, language } = useGameStore(
+  const { currentPlayer, interaction, moveNumber, scoreSummary, selectedCell, victory, language } = useGameStore(
     useShallow((state) => ({
       currentPlayer: state.gameState.currentPlayer,
       interaction: state.interaction,
       moveNumber: state.gameState.moveNumber,
+      scoreSummary: state.scoreSummary,
       selectedCell: state.selectedCell,
       victory: state.gameState.victory,
       language: state.preferences.language,
     })),
   );
   const victoryTermId = getVictoryTermId(victory);
+
+  const scoreRows = scoreSummary
+    ? [
+        {
+          label: text(language, 'scoreHomeSingles'),
+          termId: 'homeFieldSingles' as const,
+          white: scoreSummary.homeFieldSingles.white,
+          black: scoreSummary.homeFieldSingles.black,
+        },
+        {
+          label: text(language, 'scoreControlledStacks'),
+          termId: 'controlledStacks' as const,
+          white: scoreSummary.controlledStacks.white,
+          black: scoreSummary.controlledStacks.black,
+        },
+        {
+          label: text(language, 'scoreFrontRowStacks'),
+          termId: 'frontRowStacks' as const,
+          white: scoreSummary.controlledHomeRowHeightThreeStacks.white,
+          black: scoreSummary.controlledHomeRowHeightThreeStacks.black,
+        },
+        {
+          label: text(language, 'scoreFrozenEnemySingles'),
+          termId: 'frozenEnemySingles' as const,
+          white: scoreSummary.frozenEnemySingles.white,
+          black: scoreSummary.frozenEnemySingles.black,
+        },
+      ]
+    : [];
 
   return (
     <section className="panel">
@@ -72,6 +102,31 @@ function StatusSection() {
         <p className="panel__text">
           <strong>{text(language, 'selectedCellLabel')}:</strong> {selectedCell}
         </p>
+      ) : null}
+      {scoreSummary ? (
+        <div className="score-compact">
+          <div className="score-compact__header">
+            <strong>{text(language, 'scoreMode')}</strong>
+            <GlossaryTooltip language={language} termId="scoreMode" />
+          </div>
+          <div className="score-compact__table" role="table" aria-label={text(language, 'scoreMode')}>
+            <div className="score-compact__row score-compact__row--head" role="row">
+              <span role="columnheader" />
+              <span role="columnheader">{text(language, 'scoreWhite')}</span>
+              <span role="columnheader">{text(language, 'scoreBlack')}</span>
+            </div>
+            {scoreRows.map((row) => (
+              <div key={row.label} className="score-compact__row" role="row">
+                <div className="score-compact__label" role="rowheader">
+                  <span>{row.label}</span>
+                  <GlossaryTooltip language={language} termId={row.termId} />
+                </div>
+                <span role="cell">{row.white}</span>
+                <span role="cell">{row.black}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       ) : null}
     </section>
   );
@@ -132,82 +187,6 @@ function MoveInputSection() {
           {text(language, 'clear')}
         </button>
       </div>
-    </section>
-  );
-}
-
-function ScoreSection() {
-  const { language, scoreSummary } = useGameStore(
-    useShallow((state) => ({
-      language: state.preferences.language,
-      scoreSummary: state.scoreSummary,
-    })),
-  );
-
-  if (!scoreSummary) {
-    return null;
-  }
-
-  const scoreItems = [
-    {
-      label: text(language, 'whiteHomeSingles'),
-      termId: 'homeFieldSingles' as const,
-      value: scoreSummary.homeFieldSingles.white,
-    },
-    {
-      label: text(language, 'blackHomeSingles'),
-      termId: 'homeFieldSingles' as const,
-      value: scoreSummary.homeFieldSingles.black,
-    },
-    {
-      label: text(language, 'whiteStacks'),
-      termId: 'controlledStacks' as const,
-      value: scoreSummary.controlledStacks.white,
-    },
-    {
-      label: text(language, 'blackStacks'),
-      termId: 'controlledStacks' as const,
-      value: scoreSummary.controlledStacks.black,
-    },
-    {
-      label: text(language, 'whiteFrontRowStacks'),
-      termId: 'frontRowStacks' as const,
-      value: scoreSummary.controlledHomeRowHeightThreeStacks.white,
-    },
-    {
-      label: text(language, 'blackFrontRowStacks'),
-      termId: 'frontRowStacks' as const,
-      value: scoreSummary.controlledHomeRowHeightThreeStacks.black,
-    },
-    {
-      label: text(language, 'whiteFrozenEnemySingles'),
-      termId: 'frozenEnemySingles' as const,
-      value: scoreSummary.frozenEnemySingles.white,
-    },
-    {
-      label: text(language, 'blackFrozenEnemySingles'),
-      termId: 'frozenEnemySingles' as const,
-      value: scoreSummary.frozenEnemySingles.black,
-    },
-  ];
-
-  return (
-    <section className="panel">
-      <div className="panel__header panel__header--with-tooltip">
-        <h2>{text(language, 'scoreMode')}</h2>
-        <GlossaryTooltip language={language} termId="scoreMode" />
-      </div>
-      <dl className="score-grid">
-        {scoreItems.map((item) => (
-          <div key={`${item.label}-${item.value}`}>
-            <dt className="score-grid__term">
-              <span>{item.label}</span>
-              <GlossaryTooltip language={language} termId={item.termId} />
-            </dt>
-            <dd>{item.value}</dd>
-          </div>
-        ))}
-      </dl>
     </section>
   );
 }
@@ -300,7 +279,7 @@ function HistorySection() {
     .reverse();
 
   return (
-    <section className="panel">
+    <section className="panel panel--history">
       <div className="panel__header">
         <h2>{text(language, 'history')}</h2>
       </div>
@@ -395,16 +374,28 @@ function ExportImportSection() {
   );
 }
 
-/** Side panel coordinating actions, settings, history, and session import/export controls. */
-export function ControlPanel() {
+/** Game-tab side panel: status, move input, and history. */
+export function GameControlPanel() {
   return (
-    <aside className="side-panel">
+    <aside className="side-panel side-panel--game">
       <StatusSection />
       <MoveInputSection />
       <HistorySection />
-      <ScoreSection />
+    </aside>
+  );
+}
+
+/** Settings-tab side panel: rules, session controls, and import/export. */
+export function SettingsPanel() {
+  return (
+    <aside className="side-panel side-panel--settings">
       <RulesSessionSection />
       <ExportImportSection />
     </aside>
   );
+}
+
+/** Backward-compatible export retained for existing imports. */
+export function ControlPanel() {
+  return <GameControlPanel />;
 }

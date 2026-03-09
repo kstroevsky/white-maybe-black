@@ -1,16 +1,19 @@
-import { startTransition, useState } from 'react';
+import { lazy, startTransition, Suspense, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useGameStore } from '@/app/providers/GameStoreProvider';
-import type { Coord } from '@/domain';
 import { playerLabel, text } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
-import { Board } from '@/ui/board/Board';
-import { ControlPanel } from '@/ui/panels/ControlPanel';
-import { InstructionsView } from '@/ui/panels/InstructionsView';
 
-type AppTab = 'game' | 'instructions';
-const NO_SELECTABLE_COORDS: Coord[] = [];
+const GameTab = lazy(() => import('@/ui/tabs/GameTab').then((module) => ({ default: module.GameTab })));
+const InstructionsTab = lazy(() =>
+  import('@/ui/tabs/InstructionsTab').then((module) => ({ default: module.InstructionsTab })),
+);
+const SettingsTab = lazy(() =>
+  import('@/ui/tabs/SettingsTab').then((module) => ({ default: module.SettingsTab })),
+);
+
+type AppTab = 'game' | 'instructions' | 'settings';
 
 /** Returns overlay title for turn handoff screen. */
 function getTurnOverlayTitle(language: Language, player: 'white' | 'black'): string {
@@ -24,32 +27,6 @@ function getPassOverlayLabel(language: Language, player: 'white' | 'black'): str
   return language === 'russian'
     ? `Передайте устройство: ${playerLabel(language, player).toLowerCase()}.`
     : `Pass the device to ${playerLabel(language, player)}.`;
-}
-
-/** Board container subscribed only to board-facing store slices. */
-function BoardView() {
-  const { board, language, legalTargets, selectedCell, selectableCoords, onSelectCell } = useGameStore(
-    useShallow((state) => ({
-      board: state.gameState.board,
-      language: state.preferences.language,
-      legalTargets: state.legalTargets,
-      selectedCell: state.selectedCell,
-      selectableCoords:
-        state.interaction.type === 'passingDevice' ? NO_SELECTABLE_COORDS : state.selectableCoords,
-      onSelectCell: state.selectCell,
-    })),
-  );
-
-  return (
-    <Board
-      board={board}
-      language={language}
-      legalTargets={legalTargets}
-      selectedCell={selectedCell}
-      selectableCoords={selectableCoords}
-      onSelectCell={onSelectCell}
-    />
-  );
 }
 
 /** Shared hot-seat overlay isolated from non-overlay app state. */
@@ -134,17 +111,25 @@ export function App() {
             >
               {text(language, 'tabInstructions')}
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'settings'}
+              className={activeTab === 'settings' ? 'tab-button tab-button--active' : 'tab-button'}
+              onClick={() => startTransition(() => setActiveTab('settings'))}
+            >
+              {text(language, 'tabSettings')}
+            </button>
           </div>
         </header>
 
-        {activeTab === 'game' ? (
-          <div className="app-layout">
-            <BoardView />
-            <ControlPanel />
-          </div>
-        ) : (
-          <InstructionsView language={language} />
-        )}
+        <section className="app-content">
+          <Suspense fallback={<div className="tab-loading" aria-hidden="true" />}>
+            {activeTab === 'game' ? <GameTab /> : null}
+            {activeTab === 'instructions' ? <InstructionsTab /> : null}
+            {activeTab === 'settings' ? <SettingsTab /> : null}
+          </Suspense>
+        </section>
       </main>
 
       <TurnOverlay />

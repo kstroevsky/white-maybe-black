@@ -15,8 +15,8 @@ export type RuleToggleDescriptor = {
 };
 
 export const RULE_DEFAULTS: RuleConfig = {
-  allowNonAdjacentFriendlyStackTransfer: true,
-  drawRule: 'threefold',
+  allowNonAdjacentFriendlyStackTransfer: false,
+  drawRule: 'none',
   scoringMode: 'basic',
 };
 
@@ -53,7 +53,9 @@ export const RULE_TOGGLE_DESCRIPTORS: RuleToggleDescriptor[] = [
 /** Applies default values to partially specified rule configuration. */
 export function withRuleDefaults(overrides: Partial<RuleConfig> = {}): RuleConfig {
   return {
-    ...RULE_DEFAULTS,
-    ...overrides,
+    allowNonAdjacentFriendlyStackTransfer:
+      overrides.allowNonAdjacentFriendlyStackTransfer ?? RULE_DEFAULTS.allowNonAdjacentFriendlyStackTransfer,
+    drawRule: overrides.drawRule ?? RULE_DEFAULTS.drawRule,
+    scoringMode: overrides.scoringMode ?? RULE_DEFAULTS.scoringMode,
   };
 }
