@@ -306,7 +306,7 @@ export function createGameStore(options: StoreOptions = {}) {
     gameState: GameState,
     ruleConfig: RuleConfig,
   ): Pick<GameStoreData, 'selectableCoords' | 'scoreSummary'> {
-    const key = `${hashPosition(gameState)}::${ruleConfigKey(ruleConfig)}`;
+    const key = `${hashPosition(gameState)}::${gameState.status}::${ruleConfigKey(ruleConfig)}`;
 
     if (boardDerivationCache?.key === key) {
       return boardDerivationCache;
@@ -335,7 +335,7 @@ export function createGameStore(options: StoreOptions = {}) {
     coord: Coord,
     ruleConfig: RuleConfig,
   ): Pick<GameStoreData, 'availableActionKinds' | 'selectedTargetMap'> {
-    const key = `${hashPosition(gameState)}::${ruleConfigKey(ruleConfig)}::${coord}`;
+    const key = `${hashPosition(gameState)}::${gameState.status}::${ruleConfigKey(ruleConfig)}::${coord}`;
 
     if (cellDerivationCache?.key === key) {
       return cellDerivationCache;

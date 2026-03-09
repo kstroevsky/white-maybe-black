@@ -42,26 +42,12 @@ function getLegalActionCount(state: GameState, player: Player, config: RuleConfi
 function hasJumpContinuation(
   state: GameState,
   action: TurnAction,
-  nextBoard: GameState['board'],
-  actor: Player,
 ): boolean {
   if (action.type !== 'jumpSequence') {
     return false;
   }
 
-  const landing = action.path.at(-1);
-
-  if (!landing) {
-    return false;
-  }
-
-  const continuationState: GameState = {
-    ...state,
-    board: nextBoard,
-    currentPlayer: actor,
-  };
-
-  return getJumpContinuationTargets(continuationState, landing, []).length > 0;
+  return getJumpContinuationTargets(state, action.source, action.path).length > 0;
 }
 
 /** Authoritative state transition: validate, apply, resolve pass/victory, append history. */
@@ -93,7 +79,7 @@ export function applyAction(
   }
 
   const actor = state.currentPlayer;
-  const nextPlayer = hasJumpContinuation(state, action, nextBoard, actor)
+  const nextPlayer = hasJumpContinuation(state, action)
     ? actor
     : getOpponent(actor);
   const immediateState = nextStateSeed(state, nextBoard, nextPlayer);

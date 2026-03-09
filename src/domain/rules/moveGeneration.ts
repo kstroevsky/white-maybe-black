@@ -65,6 +65,62 @@ function createJumpStateKey(coord: Coord, board: Board): string {
   return `${coord}::${hashBoard(board)}`;
 }
 
+/** Rebuilds visited jump states from the active committed chain ending at `source`. */
+function getCommittedJumpVisitedStates(
+  state: GameState,
+  source: Coord,
+  movingPlayer: Player,
+): Set<string> {
+  const chain: Array<Extract<TurnAction, { type: 'jumpSequence' }> & {
+    beforeBoard: Board;
+    afterBoard: Board;
+  }> = [];
+  let expectedLanding = source;
+
+  for (let index = state.history.length - 1; index >= 0; index -= 1) {
+    const record = state.history[index];
+
+    if (record.actor !== movingPlayer || record.action.type !== 'jumpSequence') {
+      break;
+    }
+
+    const landing = record.action.path.at(-1);
+
+    if (!landing || landing !== expectedLanding) {
+      break;
+    }
+
+    chain.push({
+      ...record.action,
+      beforeBoard: record.beforeState.board,
+      afterBoard: record.afterState.board,
+    });
+    expectedLanding = record.action.source;
+  }
+
+  if (!chain.length) {
+    return new Set();
+  }
+
+  const visited = new Set<string>();
+  const orderedChain = chain.reverse();
+  const chainStart = orderedChain[0];
+
+  visited.add(createJumpStateKey(chainStart.source, chainStart.beforeBoard));
+
+  for (const segment of orderedChain) {
+    const landing = segment.path.at(-1);
+
+    if (!landing) {
+      continue;
+    }
+
+    visited.add(createJumpStateKey(landing, segment.afterBoard));
+  }
+
+  return visited;
+}
+
 /** Returns owner of the top checker at source coordinate. */
 function getMovingPlayer(board: Board, source: Coord): Player | null {
   return getTopChecker(board, source)?.owner ?? null;
@@ -262,19 +318,6 @@ function getFriendlyTransferTargets(
   });
 }
 
-/** Returns immediate single-segment jump actions from one source coordinate. */
-function getImmediateJumpActions(
-  board: Board,
-  source: Coord,
-  movingPlayer: Player,
-): JumpSequenceAction[] {
-  return getJumpTargetsOnBoard(board, source, movingPlayer).map((target) => ({
-    type: 'jumpSequence',
-    source,
-    path: [target],
-  }));
-}
-
 /** Returns next legal jump targets from a source plus optional pre-applied draft path. */
 export function getJumpContinuationTargets(
   state: GameState,
@@ -289,7 +332,11 @@ export function getJumpContinuationTargets(
 
   let currentCoord = source;
   let currentBoard = state.board;
-  let visited = new Set<string>([createJumpStateKey(source, state.board)]);
+  let visited = getCommittedJumpVisitedStates(state, source, movingPlayer);
+
+  if (!visited.size) {
+    visited = new Set([createJumpStateKey(source, state.board)]);
+  }
 
   for (const landing of draftPath) {
     const partial = resolveJumpPath(currentBoard, currentCoord, [landing], movingPlayer, visited);
@@ -368,12 +415,15 @@ export function getLegalActionsForCell(
   }
 
   const actions: TurnAction[] = [];
-  const movingPlayer = getMovingPlayer(state.board, coord);
   const splitTargets = isPlayerStack ? getSplitTargets(state.board, coord) : [];
 
-  if (movingPlayer) {
-    actions.push(...getImmediateJumpActions(state.board, coord, movingPlayer));
-  }
+  actions.push(
+    ...getJumpContinuationTargets(state, coord, []).map<JumpSequenceAction>((target) => ({
+      type: 'jumpSequence',
+      source: coord,
+      path: [target],
+    })),
+  );
 
   actions.push(
     ...getClimbTargets(state.board, coord).map((target) => ({
