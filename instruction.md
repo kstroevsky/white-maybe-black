@@ -180,6 +180,13 @@ Therefore:
 
 This means jumps **never create stacks directly**.
 
+Active units also have a basic step move:
+
+* an active single checker or a controlled stack may move exactly one cell to an **adjacent empty cell**
+* this step move works in all 8 directions
+* a stack step moves the full stack as one unit
+* frozen checkers still cannot move
+
 ---
 
 ## 9. Jumping over your own checker
@@ -192,7 +199,7 @@ Effects:
 * the move simply increases distance
 * the landing cell must be empty
 
-This is one of the main ways to advance, because there is no ordinary one-cell move to an empty cell.
+This is one of the main ways to advance and apply freezing effects, while one-cell empty-step movement is a separate move type.
 
 ---
 
@@ -225,24 +232,23 @@ An opponent may **not** jump over your frozen checker.
 
 ---
 
-## 12. Multi-jump move
+## 12. Multi-jump flow
 
-A move may consist of **one or more consecutive jump segments** by the same moving unit.
+Jumps are executed **one segment at a time**.
 
-After each legal jump segment, the same checker or stack may continue jumping if another legal jump segment is available from its new position.
+After each legal jump segment:
 
-So a move may be:
+* the board updates immediately
+* if another legal jump segment exists from the new position, the same moving checker or stack must continue jumping
+* the turn passes only when no further legal jump segment exists
 
-* a single jump
-* or a jump chain of any length
-
-For each segment:
+For every segment:
 
 * the jumped piece must be a **single checker**
 * the landing cell must be **empty**
-* freezing/unfreezing is applied separately for each jumped checker
+* freezing/unfreezing is applied separately for the jumped checker
 
-If the chain includes jumps over several opponent single checkers, each of those jumped opponent checkers becomes frozen.
+If several opponent singles are jumped across consecutive segments, each jumped opponent single becomes frozen.
 
 ---
 

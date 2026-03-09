@@ -19,7 +19,7 @@ Main entities:
 - `Checker`: owner + frozen status
 - `Cell`: checker array (bottom -> top)
 - `Board`: `Record<Coord, Cell>`
-- `TurnAction`: legal action union (`jumpSequence`, `climbOne`, `split...`, `manualUnfreeze`, etc.)
+- `TurnAction`: legal action union (`jumpSequence`, `climbOne`, `moveSingleToEmpty`, `split...`, `manualUnfreeze`, etc.)
 - `GameState`: board + turn owner + move number + status + victory + history + position counters
 - `RuleConfig`: toggleable rules (friendly transfer, draw rule, scoring mode)
 
@@ -53,7 +53,8 @@ Implemented in `src/domain/rules/moveGeneration.ts`.
    - player-controlled stack.
 4. Adds all jump sequences via recursive search.
 5. Adds `climbOne` targets.
-6. For stacks, adds:
+6. Adds `moveSingleToEmpty` targets for active single checkers and controlled stacks (adjacent empty cells only; stack moves as one unit).
+7. For stacks, adds:
    - `splitOneFromStack`
    - `splitTwoFromStack`
    - `friendlyStackTransfer` (if toggle enabled)
@@ -65,6 +66,7 @@ Jumping is simulated segment-by-segment:
 - Middle cell must be a legal jump-over cell (never a stack).
 - If jumping over enemy single checker, it becomes frozen.
 - If jumping over own frozen single checker, it gets unfrozen.
+- Opponents cannot jump over a frozen checker they do not own.
 
 To prevent illegal loops in chain jumps, the engine tracks `visited` jump states using:
 - current coordinate + board hash (`createJumpStateKey`).
@@ -119,33 +121,41 @@ Main flow:
 2. Store queries legal actions from domain engine.
 3. User chooses action type (`chooseActionType`).
 4. Store highlights legal targets.
-5. For jumps, user builds path incrementally using `getJumpContinuationTargets`.
-6. Store commits final `TurnAction` via `commitAction` -> `applyAction`.
-7. Store updates interaction state (pass overlay or immediate idle).
+5. For jumps, each legal target click immediately commits one jump segment.
+6. If a continuation exists, store keeps jump mode active for the new source using `getJumpContinuationTargets`.
+7. While jump continuation is active, non-target clicks are ignored and `cancelInteraction` cannot clear it.
+8. Store resolves turn/pass only when no jump continuation remains.
 
 ## 8. Undo/redo and history model
 Store keeps:
-- `past`: snapshots before current position
+- `turnLog`: one shared action/history timeline
+- `past`: lightweight undo frames (`snapshot + positionCounts + historyCursor`)
 - `gameState`: current position
-- `future`: redo stack
+- `future`: lightweight redo frames
 - `historyCursor`: current index in timeline
 
 Behavior:
-- `undo`: pop from `past`, push current to `future`
-- `redo`: shift from `future`, push current to `past`
+- `undo`: pop one frame from `past`, push current frame to `future`
+- `redo`: shift one frame from `future`, push current frame to `past`
 - any new committed action clears `future`
 
-Domain `gameState.history` stores structured turn records with action payloads and snapshots.
+Runtime `gameState.history` is reconstructed from `turnLog.slice(0, historyCursor)`, so history is stored once but still exposed to the domain engine in its expected shape.
 
 ## 9. Persistence and import/export
 Session serialization lives in `src/domain/serialization/session.ts`.
 
 `SerializableSession` contains:
+- `version: 2`
 - `ruleConfig`
 - `preferences`
-- `present`
-- `past`
-- `future`
+- `turnLog`
+- `present`: current undo frame
+- `past`: undo frames
+- `future`: redo frames
+
+Compatibility:
+- v2 is the write format
+- v1 payloads are still accepted and migrated on load/import
 
 Safety model:
 - strict runtime guards (`assert*` functions) validate every nested value
@@ -154,15 +164,16 @@ Safety model:
 
 Storage integration in `createGameStore`:
 - key: `SESSION_STORAGE_KEY`
-- automatic persistence after state-changing actions
-- manual export buffer + import buffer in control panel
+- automatic persistence after state-changing actions using compact JSON
+- export JSON is regenerated only on explicit refresh
+- import buffer remains local UI state until import is requested
 
 ## 10. UI composition and responsibilities
 - `src/app/App.tsx`: top-level composition and tab navigation
-- `src/ui/board/Board.tsx`: board grid and coordinate layout
+- `src/ui/board/Board.tsx`: memoized board grid and coordinate layout
 - `src/ui/cells/BoardCell.tsx`: per-cell interaction and highlighting
-- `src/ui/panels/ControlPanel.tsx`: actions, settings, history, import/export
-- `src/ui/pieces/CheckerStack.tsx`: visual stack layers and frozen marker
+- `src/ui/panels/ControlPanel.tsx`: independently subscribed status/actions/settings/history/import-export sections
+- `src/ui/pieces/CheckerStack.tsx`: memoized visual stack layers and frozen marker
 
 UI never re-implements game legality; it always delegates to domain selectors/functions.
 
