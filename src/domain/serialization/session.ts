@@ -18,6 +18,7 @@ import { validateGameState } from '@/domain/validators/stateValidators';
 import type { AppPreferences, SerializableSession } from '@/shared/types/session';
 import { isRecord } from '@/shared/utils/collections';
 
+/** Runtime guard that narrows unknown payload to a valid player token. */
 function assertPlayer(value: unknown, label: string): Player {
   if (value !== 'white' && value !== 'black') {
     throw new Error(`Invalid ${label}.`);
@@ -26,6 +27,7 @@ function assertPlayer(value: unknown, label: string): Player {
   return value;
 }
 
+/** Runtime guard that validates coordinate values against board coordinates. */
 function assertCoord(value: unknown, label: string): Coord {
   if (typeof value !== 'string' || !allCoords().includes(value as Coord)) {
     throw new Error(`Invalid ${label}.`);
@@ -34,6 +36,7 @@ function assertCoord(value: unknown, label: string): Coord {
   return value as Coord;
 }
 
+/** Runtime guard and normalizer for persisted victory payloads. */
 function assertVictory(value: unknown): Victory {
   if (!isRecord(value) || typeof value.type !== 'string') {
     throw new Error('Invalid victory state.');
@@ -55,6 +58,7 @@ function assertVictory(value: unknown): Victory {
   }
 }
 
+/** Runtime guard for rule config with fallback to current defaults. */
 function assertRuleConfig(value: unknown): RuleConfig {
   if (!isRecord(value)) {
     throw new Error('Invalid rule config.');
@@ -76,6 +80,7 @@ function assertRuleConfig(value: unknown): RuleConfig {
   });
 }
 
+/** Runtime guard for app preferences, including legacy language migration. */
 function assertPreferences(value: unknown): AppPreferences {
   if (!isRecord(value)) {
     throw new Error('Invalid preferences.');
@@ -102,6 +107,7 @@ function assertPreferences(value: unknown): AppPreferences {
   };
 }
 
+/** Runtime guard for single checker payload. */
 function assertChecker(value: unknown): Checker {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.frozen !== 'boolean') {
     throw new Error('Invalid checker.');
@@ -114,6 +120,7 @@ function assertChecker(value: unknown): Checker {
   };
 }
 
+/** Runtime guard for full board payload with per-cell checker parsing. */
 function assertBoard(value: unknown): Board {
   if (!isRecord(value)) {
     throw new Error('Invalid board.');
@@ -136,6 +143,7 @@ function assertBoard(value: unknown): Board {
   return board;
 }
 
+/** Runtime guard for one serialized action union variant. */
 function assertAction(value: unknown): TurnAction {
   if (!isRecord(value) || typeof value.type !== 'string') {
     throw new Error('Invalid action.');
@@ -171,6 +179,7 @@ function assertAction(value: unknown): TurnAction {
   }
 }
 
+/** Runtime guard for game snapshot records embedded in history. */
 function assertStateSnapshot(value: unknown): StateSnapshot {
   if (!isRecord(value)) {
     throw new Error('Invalid state snapshot.');
@@ -188,6 +197,7 @@ function assertStateSnapshot(value: unknown): StateSnapshot {
   };
 }
 
+/** Runtime guard for one historical turn record. */
 function assertTurnRecord(value: unknown): TurnRecord {
   if (!isRecord(value) || !Array.isArray(value.autoPasses)) {
     throw new Error('Invalid turn record.');
@@ -204,6 +214,7 @@ function assertTurnRecord(value: unknown): TurnRecord {
   };
 }
 
+/** Runtime guard for repetition counter map. */
 function assertPositionCounts(value: unknown): Record<string, number> {
   if (!isRecord(value)) {
     return {};
@@ -217,6 +228,7 @@ function assertPositionCounts(value: unknown): Record<string, number> {
   }, {});
 }
 
+/** Increments a repetition counter entry for board+side-to-move state. */
 function incrementPositionCount(
   counts: Record<string, number>,
   state: Pick<StateSnapshot, 'board' | 'currentPlayer'>,
@@ -225,6 +237,7 @@ function incrementPositionCount(
   counts[positionHash] = (counts[positionHash] ?? 0) + 1;
 }
 
+/** Rebuilds history hashes and position counts from canonical snapshots. */
 function normalizeGameState(gameState: GameState): GameState {
   const history = gameState.history.map((record) => ({
     ...record,
@@ -249,6 +262,7 @@ function normalizeGameState(gameState: GameState): GameState {
   };
 }
 
+/** Runtime guard for complete game state plus invariant validation. */
 function assertGameState(value: unknown): GameState {
   if (!isRecord(value) || !Array.isArray(value.history)) {
     throw new Error('Invalid game state.');
@@ -268,6 +282,7 @@ function assertGameState(value: unknown): GameState {
   return gameState;
 }
 
+/** Runtime guard for undo/redo state arrays. */
 function assertGameStates(value: unknown): GameState[] {
   if (!Array.isArray(value)) {
     throw new Error('Expected game states array.');
@@ -276,10 +291,12 @@ function assertGameStates(value: unknown): GameState[] {
   return value.map(assertGameState);
 }
 
+/** Serializes full session payload for local persistence and export. */
 export function serializeSession(session: SerializableSession): string {
   return JSON.stringify(session, null, 2);
 }
 
+/** Deserializes session JSON and validates every nested domain object. */
 export function deserializeSession(serialized: string): SerializableSession {
   const parsed = JSON.parse(serialized) as unknown;
 

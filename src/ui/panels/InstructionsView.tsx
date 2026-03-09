@@ -12,6 +12,7 @@ type InstructionBlock =
   | { type: 'list'; ordered: boolean; items: string[] }
   | { type: 'divider' };
 
+/** Flushes accumulated paragraph lines into a single paragraph block. */
 function flushParagraph(buffer: string[], blocks: InstructionBlock[]): void {
   if (!buffer.length) {
     return;
@@ -24,6 +25,7 @@ function flushParagraph(buffer: string[], blocks: InstructionBlock[]): void {
   buffer.length = 0;
 }
 
+/** Parses minimal markdown subset used by bundled instruction files. */
 function parseMarkdown(source: string): InstructionBlock[] {
   const blocks: InstructionBlock[] = [];
   const paragraph: string[] = [];
@@ -98,6 +100,7 @@ function parseMarkdown(source: string): InstructionBlock[] {
   return blocks;
 }
 
+/** Renders bold inline markdown fragments (`**text**`) inside block text. */
 function renderInline(textValue: string): ReactNode[] {
   return textValue.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
     if (part.startsWith('**') && part.endsWith('**')) {
@@ -117,6 +120,7 @@ type InstructionsViewProps = {
   language: Language;
 };
 
+/** Read-only instructions page that reuses markdown parser for RU/EN rule text. */
 export function InstructionsView({ language }: InstructionsViewProps) {
   const blocks = INSTRUCTION_BLOCKS[language];
 

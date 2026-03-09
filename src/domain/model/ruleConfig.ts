@@ -50,6 +50,7 @@ export const RULE_TOGGLE_DESCRIPTORS: RuleToggleDescriptor[] = [
   },
 ];
 
+/** Applies default values to partially specified rule configuration. */
 export function withRuleDefaults(overrides: Partial<RuleConfig> = {}): RuleConfig {
   return {
     ...RULE_DEFAULTS,

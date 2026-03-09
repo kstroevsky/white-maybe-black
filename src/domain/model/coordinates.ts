@@ -3,10 +3,12 @@ import type { Column, Coord, Row } from '@/domain/model/types';
 
 export type DirectionVector = (typeof DIRECTION_VECTORS)[number];
 
+/** Converts typed column+row parts into canonical coordinate string (e.g. A1). */
 export function createCoord(column: Column, row: Row): Coord {
   return `${column}${row}`;
 }
 
+/** Parses coordinate string into typed column and row parts. */
 export function parseCoord(coord: Coord): { column: Column; row: Row } {
   return {
     column: coord[0] as Column,
@@ -14,6 +16,7 @@ export function parseCoord(coord: Coord): { column: Column; row: Row } {
   };
 }
 
+/** Converts coordinate to zero-based array indices used by vector math helpers. */
 export function coordToIndices(coord: Coord): { fileIndex: number; rankIndex: number } {
   const { column, row } = parseCoord(coord);
 
@@ -23,6 +26,7 @@ export function coordToIndices(coord: Coord): { fileIndex: number; rankIndex: nu
   };
 }
 
+/** Validates that integer indices stay inside the 6x6 board bounds. */
 export function isInsideBoardPosition(fileIndex: number, rankIndex: number): boolean {
   return (
     fileIndex >= 0 &&
@@ -32,6 +36,7 @@ export function isInsideBoardPosition(fileIndex: number, rankIndex: number): boo
   );
 }
 
+/** Converts board indices back to coordinate, or null if outside board. */
 export function toCoord(fileIndex: number, rankIndex: number): Coord | null {
   if (!isInsideBoardPosition(fileIndex, rankIndex)) {
     return null;
@@ -40,18 +45,21 @@ export function toCoord(fileIndex: number, rankIndex: number): Coord | null {
   return createCoord(BOARD_COLUMNS[fileIndex], BOARD_ROWS[rankIndex]);
 }
 
+/** Returns adjacent coordinate in the provided direction vector. */
 export function getAdjacentCoord(coord: Coord, direction: DirectionVector): Coord | null {
   const { fileIndex, rankIndex } = coordToIndices(coord);
 
   return toCoord(fileIndex + direction.fileDelta, rankIndex + direction.rankDelta);
 }
 
+/** Returns jump landing coordinate that is two vector steps away. */
 export function getJumpLandingCoord(coord: Coord, direction: DirectionVector): Coord | null {
   const { fileIndex, rankIndex } = coordToIndices(coord);
 
   return toCoord(fileIndex + direction.fileDelta * 2, rankIndex + direction.rankDelta * 2);
 }
 
+/** Checks whether two coordinates are orthogonally/diagonally adjacent. */
 export function isAdjacent(source: Coord, target: Coord): boolean {
   const sourceIndices = coordToIndices(source);
   const targetIndices = coordToIndices(target);
@@ -61,6 +69,7 @@ export function isAdjacent(source: Coord, target: Coord): boolean {
   return (fileDelta > 0 || rankDelta > 0) && fileDelta <= 1 && rankDelta <= 1;
 }
 
+/** Returns the single-step direction from source to target, or null if invalid. */
 export function getDirectionBetween(source: Coord, target: Coord): DirectionVector | null {
   const sourceIndices = coordToIndices(source);
   const targetIndices = coordToIndices(target);
@@ -78,6 +87,7 @@ export function getDirectionBetween(source: Coord, target: Coord): DirectionVect
   ) as DirectionVector | null;
 }
 
+/** Returns jump direction (two-step move) between source and landing coordinates. */
 export function getJumpDirection(source: Coord, landing: Coord): DirectionVector | null {
   const sourceIndices = coordToIndices(source);
   const targetIndices = coordToIndices(landing);
@@ -101,6 +111,7 @@ export function getJumpDirection(source: Coord, landing: Coord): DirectionVector
   ) as DirectionVector | null;
 }
 
+/** Returns all board coordinates in row-major ascending order (A1..F6). */
 export function allCoords(): Coord[] {
   return BOARD_ROWS.flatMap((row) =>
     BOARD_COLUMNS.map((column) => createCoord(column, row)),

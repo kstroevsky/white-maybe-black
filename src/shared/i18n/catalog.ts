@@ -103,10 +103,12 @@ const TEXT = {
 
 export type TextKey = keyof (typeof TEXT)['english'];
 
+/** Returns localized static UI text by language and key. */
 export function text(language: Language, key: TextKey): string {
   return TEXT[language][key];
 }
 
+/** Returns localized player label. */
 export function playerLabel(language: Language, player: Player): string {
   if (language === 'russian') {
     return player === 'white' ? 'Белые' : 'Чёрные';
@@ -115,6 +117,7 @@ export function playerLabel(language: Language, player: Player): string {
   return player === 'white' ? 'White' : 'Black';
 }
 
+/** Returns localized action label used in buttons and history summaries. */
 export function actionLabel(language: Language, actionKind: ActionKind): string {
   switch (actionKind) {
     case 'jumpSequence':
@@ -132,6 +135,7 @@ export function actionLabel(language: Language, actionKind: ActionKind): string 
   }
 }
 
+/** Returns localized status line for current interaction state machine node. */
 export function describeInteraction(language: Language, interaction: InteractionState): string {
   switch (interaction.type) {
     case 'idle':
@@ -171,6 +175,7 @@ export function describeInteraction(language: Language, interaction: Interaction
   }
 }
 
+/** Formats action payload into human-readable history entry fragment. */
 export function formatAction(language: Language, action: TurnAction): string {
   switch (action.type) {
     case 'manualUnfreeze':
@@ -187,6 +192,7 @@ export function formatAction(language: Language, action: TurnAction): string {
   }
 }
 
+/** Formats current victory status into localized short text. */
 export function formatVictory(language: Language, victory: Victory): string {
   switch (victory.type) {
     case 'none':
@@ -210,6 +216,7 @@ export function formatVictory(language: Language, victory: Victory): string {
   }
 }
 
+/** Formats one turn record for the history list in reverse chronological order. */
 export function formatTurnRecord(language: Language, record: TurnRecord): string {
   const actor = playerLabel(language, record.actor);
   const autoPasses = record.autoPasses.length

@@ -11,18 +11,21 @@ import { InstructionsView } from '@/ui/panels/InstructionsView';
 
 type AppTab = 'game' | 'instructions';
 
+/** Returns overlay title for turn handoff screen. */
 function getTurnOverlayTitle(language: Language, player: 'white' | 'black'): string {
   return language === 'russian'
     ? `${playerLabel(language, player)} ходят`
     : `${playerLabel(language, player)} turn`;
 }
 
+/** Returns localized instruction text for pass-device overlay. */
 function getPassOverlayLabel(language: Language, player: 'white' | 'black'): string {
   return language === 'russian'
     ? `Передайте устройство: ${playerLabel(language, player).toLowerCase()}.`
     : `Pass the device to ${playerLabel(language, player)}.`;
 }
 
+/** Root screen component wiring store state into board and control-panel presentation. */
 export function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('game');
   const gameState = useGameStore((state) => state.gameState);
@@ -69,6 +72,7 @@ export function App() {
   const selectableCoords =
     interaction.type === 'passingDevice'
       ? []
+      // Cells are selectable only if they currently expose at least one legal action.
       : allCoords().filter((coord) => getLegalActionsForCell(gameState, coord, ruleConfig).length);
 
   return (

@@ -43,16 +43,19 @@ type ControlPanelProps = {
   onUndo: () => void;
 };
 
+/** Generates deterministic ids for checkbox input/label wiring. */
 function checkboxId(section: string, name: string): string {
   return `${section}-${name}`;
 }
 
+/** Returns localized turn banner text. */
 function getTurnLabel(language: Language, currentPlayer: GameState['currentPlayer']): string {
   return language === 'russian'
     ? `${playerLabel(language, currentPlayer)} ходят`
     : `${playerLabel(language, currentPlayer)} turn`;
 }
 
+/** Maps terminal status to glossary term for contextual help tooltip. */
 function getVictoryTermId(victory: Victory): GlossaryTermId | null {
   switch (victory.type) {
     case 'homeField':
@@ -66,6 +69,7 @@ function getVictoryTermId(victory: Victory): GlossaryTermId | null {
   }
 }
 
+/** Side panel coordinating action buttons, settings, history, and session import/export controls. */
 export function ControlPanel({
   availableActionKinds,
   canRedo,

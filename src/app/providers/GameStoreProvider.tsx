@@ -13,6 +13,7 @@ type GameStoreProviderProps = {
   initialSession?: SerializableSession;
 };
 
+/** Creates and exposes one store instance for the whole React subtree. */
 export function GameStoreProvider({
   children,
   initialSession,
@@ -30,6 +31,7 @@ export function GameStoreProvider({
   );
 }
 
+/** Typed zustand selector hook bound to `GameStoreProvider` context. */
 export function useGameStore<T>(selector: (state: GameStoreState) => T): T {
   const store = useContext(GameStoreContext);
 

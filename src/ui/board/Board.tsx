@@ -14,6 +14,7 @@ type BoardProps = {
   onSelectCell: (coord: Coord) => void;
 };
 
+/** Presentational board grid that renders cell state and click targets from store-derived props. */
 export function Board({
   board,
   language,
@@ -37,6 +38,7 @@ export function Board({
           <div className="board-grid-wrap">
             <div className="board-grid">
               {allCoords()
+                // Render from top row down so visual board matches human board orientation.
                 .sort((left, right) => {
                   const leftCoord = parseCoord(left);
                   const rightCoord = parseCoord(right);

@@ -175,6 +175,7 @@ const GLOSSARY: Record<GlossaryTermId, GlossaryEntry> = {
   },
 };
 
+/** Returns localized glossary title/description pair for tooltips and contextual help UI. */
 export function getGlossaryEntry(termId: GlossaryTermId, language: Language): { title: string; description: string } {
   return {
     title: GLOSSARY[termId].title[language],

@@ -9,6 +9,7 @@ type GlossaryTooltipProps = {
   termId: GlossaryTermId;
 };
 
+/** Inline glossary popover with outside-click dismissal for concise rule clarifications. */
 export function GlossaryTooltip({ language, termId }: GlossaryTooltipProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLSpanElement | null>(null);
@@ -21,6 +22,7 @@ export function GlossaryTooltip({ language, termId }: GlossaryTooltipProps) {
       return undefined;
     }
 
+    // Close popover when pointer interaction happens outside tooltip anchor.
     function handlePointerDown(event: PointerEvent) {
       if (!anchorRef.current?.contains(event.target as Node)) {
         setOpen(false);

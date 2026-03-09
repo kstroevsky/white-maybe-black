@@ -56,10 +56,12 @@ const DEFAULT_PREFERENCES: AppPreferences = {
   language: 'russian',
 };
 
+/** Deep-clones game state snapshots for undo/redo safety. */
 function cloneGameState(state: GameState): GameState {
   return structuredClone(state);
 }
 
+/** Builds serializable session payload from store slices. */
 function buildSession(
   ruleConfig: RuleConfig,
   preferences: AppPreferences,
@@ -77,6 +79,7 @@ function buildSession(
   };
 }
 
+/** Persists session into browser storage when available. */
 function persistSession(session: SerializableSession, storage?: Storage): void {
   if (!storage) {
     return;
@@ -85,6 +88,7 @@ function persistSession(session: SerializableSession, storage?: Storage): void {
   storage.setItem(SESSION_STORAGE_KEY, serializeSession(session));
 }
 
+/** Loads session from browser storage and drops corrupted payloads. */
 function loadSession(storage?: Storage): SerializableSession | null {
   if (!storage) {
     return null;
@@ -104,6 +108,7 @@ function loadSession(storage?: Storage): SerializableSession | null {
   }
 }
 
+/** Returns fresh default session for first launch or reset fallback. */
 function getDefaultSession(): SerializableSession {
   const ruleConfig = withRuleDefaults();
   const present = createInitialState(ruleConfig);
@@ -111,6 +116,7 @@ function getDefaultSession(): SerializableSession {
   return buildSession(ruleConfig, DEFAULT_PREFERENCES, present, [], []);
 }
 
+/** Creates selection/interaction slice in one place to keep updates consistent. */
 function createSelectionState(
   source: Coord | null,
   actionType: ActionKind | null,
@@ -130,6 +136,7 @@ function createSelectionState(
   };
 }
 
+/** Resets interaction state to neutral mode for current game status. */
 function createIdleSelection(gameState: GameState): Pick<
   GameStoreData,
   'selectedCell' | 'selectedActionType' | 'interaction' | 'legalTargets' | 'draftJumpPath'
@@ -141,6 +148,7 @@ function createIdleSelection(gameState: GameState): Pick<
   );
 }
 
+/** Regenerates export JSON from current in-memory session slices. */
 function deriveExportBuffer(data: Pick<GameStoreData, 'ruleConfig' | 'preferences' | 'gameState' | 'past' | 'future'>): string {
   return serializeSession(
     buildSession(
@@ -158,6 +166,7 @@ type StoreOptions = {
   storage?: Storage;
 };
 
+/** Creates zustand store orchestrating UI interaction state and pure domain engine. */
 export function createGameStore(options: StoreOptions = {}) {
   const storage =
     options.storage ??
@@ -168,6 +177,7 @@ export function createGameStore(options: StoreOptions = {}) {
     initialSession.present.status === 'gameOver' ? { type: 'gameOver' } : { type: 'idle' };
 
   const store = createStore<GameStoreState>((set, get) => {
+    /** Persists current core session slices after state transitions. */
     function persistCurrentState(nextState: Pick<
       GameStoreData,
       'ruleConfig' | 'preferences' | 'gameState' | 'past' | 'future'
@@ -184,6 +194,7 @@ export function createGameStore(options: StoreOptions = {}) {
       );
     }
 
+    /** Commits one validated turn action through the domain reducer and updates app-level flow state. */
     function commitAction(action: TurnAction): void {
       const state = get();
       const nextGameState = applyAction(state.gameState, action, state.ruleConfig);
@@ -212,6 +223,7 @@ export function createGameStore(options: StoreOptions = {}) {
       });
       persistCurrentState(nextData);
 
+      // Skip pass overlay by briefly entering turnResolved and then immediately returning to idle.
       if (!state.preferences.passDeviceOverlayEnabled && nextGameState.status !== 'gameOver') {
         queueMicrotask(() => {
           const latest = get();
@@ -225,6 +237,7 @@ export function createGameStore(options: StoreOptions = {}) {
       }
     }
 
+    /** Replaces entire store session (used by import and initialization paths). */
     function applySession(session: SerializableSession): void {
       set({
         ruleConfig: session.ruleConfig,
@@ -420,6 +433,7 @@ export function createGameStore(options: StoreOptions = {}) {
           state.legalTargets.includes(coord)
         ) {
           if (state.selectedActionType === 'jumpSequence') {
+            // Jump selection is incremental: each click extends path until no continuation exists.
             const nextPath = [...state.draftJumpPath, coord];
             const nextTargets = uniqueValues(
               getJumpContinuationTargets(state.gameState, state.selectedCell, nextPath),
@@ -447,6 +461,7 @@ export function createGameStore(options: StoreOptions = {}) {
             return;
           }
 
+          // Non-jump actions resolve immediately after selecting a legal target.
           commitAction({
             type: state.selectedActionType,
             source: state.selectedCell,
@@ -522,6 +537,7 @@ export function createGameStore(options: StoreOptions = {}) {
           }
         }
 
+        // Rule toggles can immediately terminate active games (for example threefold draw on/off).
         const nextData = {
           ruleConfig,
           preferences: state.preferences,

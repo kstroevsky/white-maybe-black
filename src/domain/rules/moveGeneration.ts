@@ -46,18 +46,22 @@ type PartialJumpResolution = {
 
 type TargetMap = Record<ActionKind, Coord[]>;
 
+/** Builds unique key for jump-loop prevention (coord + full board state). */
 function createJumpStateKey(coord: Coord, board: Board): string {
   return `${coord}::${hashBoard(board)}`;
 }
 
+/** Returns owner of the top checker at source coordinate. */
 function getMovingPlayer(board: Board, source: Coord): Player | null {
   return getTopChecker(board, source)?.owner ?? null;
 }
 
+/** Jumping from stacks moves whole stack as one unit. */
 function isWholeStackJump(board: Board, source: Coord): boolean {
   return isStack(board, source);
 }
 
+/** Applies one jump segment, including freeze/unfreeze side effects on jumped checker. */
 function applySingleJumpSegment(board: Board, source: Coord, landing: Coord, movingPlayer: Player): ValidationResult {
   const direction = getJumpDirection(source, landing);
 
@@ -99,6 +103,7 @@ function applySingleJumpSegment(board: Board, source: Coord, landing: Coord, mov
   return validateBoard(board);
 }
 
+/** Resolves an entire jump path and blocks repetition of a prior jump state. */
 function resolveJumpPath(
   board: Board,
   source: Coord,
@@ -141,6 +146,7 @@ function resolveJumpPath(
   };
 }
 
+/** Returns immediate legal jump landings from a coordinate on a specific board. */
 function getJumpTargetsOnBoard(board: Board, source: Coord, movingPlayer: Player): Coord[] {
   return DIRECTION_VECTORS.flatMap((direction) => {
     const jumpedCoord = getAdjacentCoord(source, direction);
@@ -162,6 +168,7 @@ function getJumpTargetsOnBoard(board: Board, source: Coord, movingPlayer: Player
   });
 }
 
+/** Returns adjacent occupied targets that can accept one checker by climb. */
 function getClimbTargets(board: Board, source: Coord): Coord[] {
   return DIRECTION_VECTORS.flatMap((direction) => {
     const target = getAdjacentCoord(source, direction);
@@ -174,6 +181,7 @@ function getClimbTargets(board: Board, source: Coord): Coord[] {
   });
 }
 
+/** Returns adjacent empty cells used by stack split actions. */
 function getSplitTargets(board: Board, source: Coord): Coord[] {
   return DIRECTION_VECTORS.flatMap((direction) => {
     const target = getAdjacentCoord(source, direction);
@@ -186,6 +194,7 @@ function getSplitTargets(board: Board, source: Coord): Coord[] {
   });
 }
 
+/** Returns legal same-owner stack transfer destinations under current rule config. */
 function getFriendlyTransferTargets(
   board: Board,
   source: Coord,
@@ -209,6 +218,7 @@ function getFriendlyTransferTargets(
   });
 }
 
+/** Recursively enumerates all legal jump sequences from a source coordinate. */
 function collectJumpSequences(
   board: Board,
   source: Coord,
@@ -237,6 +247,7 @@ function collectJumpSequences(
   return actions;
 }
 
+/** Returns next legal jump targets when the UI is building a multi-jump path. */
 export function getJumpContinuationTargets(
   state: GameState,
   source: Coord,
@@ -264,6 +275,7 @@ export function getJumpContinuationTargets(
     visited = partial.visited;
   }
 
+  // Filter out landings that would immediately create an invalid repeated jump state.
   return getJumpTargetsOnBoard(currentBoard, currentCoord, movingPlayer).filter((target) => {
     const resolution = resolveJumpPath(currentBoard, currentCoord, [target], movingPlayer, visited);
 
@@ -275,6 +287,7 @@ export function getJumpContinuationTargets(
   });
 }
 
+/** Groups legal actions by kind into UI-ready target buckets. */
 function buildTargetMap(actions: TurnAction[]): TargetMap {
   return actions.reduce<TargetMap>(
     (map, action) => {
@@ -300,6 +313,7 @@ function buildTargetMap(actions: TurnAction[]): TargetMap {
   );
 }
 
+/** Returns legal target coordinates per action kind for one selected cell. */
 export function getLegalTargetsForCell(
   state: GameState,
   coord: Coord,
@@ -308,6 +322,7 @@ export function getLegalTargetsForCell(
   return buildTargetMap(getLegalActionsForCell(state, coord, config));
 }
 
+/** Generates all legal actions for the current player from a specific coordinate. */
 export function getLegalActionsForCell(
   state: GameState,
   coord: Coord,
@@ -385,6 +400,7 @@ export function getLegalActionsForCell(
   return actions;
 }
 
+/** Generates every legal action for the current player across the whole board. */
 export function getLegalActions(
   state: GameState,
   config: Partial<RuleConfig> = {},
@@ -392,10 +408,12 @@ export function getLegalActions(
   return allCoords().flatMap((coord) => getLegalActionsForCell(state, coord, config));
 }
 
+/** Lightweight structural equality for action matching in validator checks. */
 function actionsEqual(left: TurnAction, right: TurnAction): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+/** Shared source ownership validation for action variants with a source coordinate. */
 function validateCommonSource(
   state: GameState,
   source: Coord,
@@ -414,6 +432,7 @@ function validateCommonSource(
   return { valid: true };
 }
 
+/** Validates action legality against current state and optional rule configuration. */
 export function validateAction(
   state: GameState,
   action: TurnAction,
@@ -488,6 +507,7 @@ export function validateAction(
   }
 }
 
+/** Applies a validated action and returns next board state (or validation error). */
 export function applyActionToBoard(
   state: GameState,
   action: TurnAction,

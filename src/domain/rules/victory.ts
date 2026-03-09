@@ -11,11 +11,13 @@ import { hashPosition } from '@/domain/model/hash';
 import { withRuleDefaults } from '@/domain/model/ruleConfig';
 import type { Coord, GameState, Player, RuleConfig, Victory } from '@/domain/model/types';
 
+/** Returns six front-row coordinates used by the six-stack victory check. */
 function getHomeFieldFrontCoords(player: Player): Coord[] {
   const homeRow = FRONT_HOME_ROW[player];
   return ['A', 'B', 'C', 'D', 'E', 'F'].map((column) => createCoord(column as 'A', homeRow));
 }
 
+/** True when all 18 player checkers are singles inside that player's home rows. */
 function hasHomeFieldWin(state: GameState, player: Player): boolean {
   if (countCheckersForPlayer(state.board, player) !== 18) {
     return false;
@@ -33,12 +35,14 @@ function hasHomeFieldWin(state: GameState, player: Player): boolean {
   });
 }
 
+/** True when player controls six height-3 stacks on their front home row. */
 function hasSixStackWin(state: GameState, player: Player): boolean {
   return getHomeFieldFrontCoords(player).every((coord) => {
     return getCellHeight(state.board, coord) === 3 && getController(state.board, coord) === player;
   });
 }
 
+/** Evaluates deterministic terminal status for current state under provided rules. */
 export function checkVictory(
   state: GameState,
   config: Partial<RuleConfig> = {},

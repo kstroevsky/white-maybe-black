@@ -3,6 +3,7 @@ import { FRONT_HOME_ROW, HOME_ROWS } from '@/domain/model/constants';
 import { allCoords, parseCoord } from '@/domain/model/coordinates';
 import type { GameState, Player, ScoreSummary } from '@/domain/model/types';
 
+/** Creates zeroed score counters for optional informational score mode. */
 function createScoreSeed(): ScoreSummary {
   return {
     homeFieldSingles: { white: 0, black: 0 },
@@ -12,6 +13,7 @@ function createScoreSeed(): ScoreSummary {
   };
 }
 
+/** Computes read-only score metrics without affecting legality or victory. */
 export function getScoreSummary(state: GameState): ScoreSummary {
   const summary = createScoreSeed();
 

@@ -5,10 +5,12 @@ type CheckerStackProps = {
   emphasized?: boolean;
 };
 
+/** Maps checker owner to CSS class pair used by SVG token skin. */
 function checkerClass(owner: Checker['owner']): string {
   return owner === 'white' ? 'checker checker--white' : 'checker checker--black';
 }
 
+/** Renders checker stack with visible layer offsets and frozen marker for frozen singles. */
 export function CheckerStack({ checkers, emphasized = false }: CheckerStackProps) {
   return (
     <div

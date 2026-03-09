@@ -15,6 +15,7 @@ type BoardCellProps = {
   onClick: (coord: Coord) => void;
 };
 
+/** Single clickable board cell with visual state for selection and legal-target highlighting. */
 export function BoardCell({
   cell,
   coord,

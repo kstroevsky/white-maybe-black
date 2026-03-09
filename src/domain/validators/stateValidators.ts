@@ -11,6 +11,7 @@ import {
 import { allCoords, isAdjacent } from '@/domain/model/coordinates';
 import type { Board, Coord, GameState, Player, ValidationResult } from '@/domain/model/types';
 
+/** True when the cell contains exactly one frozen checker. */
 export function isFrozenSingle(board: Board, coord: Coord): boolean {
   if (!isSingleChecker(board, coord)) {
     return false;
@@ -19,6 +20,7 @@ export function isFrozenSingle(board: Board, coord: Coord): boolean {
   return Boolean(getTopChecker(board, coord)?.frozen);
 }
 
+/** True when the cell contains exactly one active (not frozen) checker. */
 export function isActiveSingle(board: Board, coord: Coord): boolean {
   if (!isSingleChecker(board, coord)) {
     return false;
@@ -27,15 +29,18 @@ export function isActiveSingle(board: Board, coord: Coord): boolean {
   return !getTopChecker(board, coord)?.frozen;
 }
 
+/** True when the cell is a stack controlled by the given player. */
 export function isControlledStack(board: Board, coord: Coord, player: Player): boolean {
   return isStack(board, coord) && getController(board, coord) === player;
 }
 
+/** True when the player owns an active single checker on the coordinate. */
 export function isMovableSingle(board: Board, coord: Coord, player: Player): boolean {
   const checker = getTopChecker(board, coord);
   return isSingleChecker(board, coord) && checker?.owner === player && !checker.frozen;
 }
 
+/** Checks climb/transfer landing constraints for occupied target cells. */
 export function canLandOnOccupiedCell(board: Board, target: Coord): boolean {
   if (isEmptyCell(board, target)) {
     return false;
@@ -48,6 +53,7 @@ export function canLandOnOccupiedCell(board: Board, target: Coord): boolean {
   return getCellHeight(board, target) < 3;
 }
 
+/** Checks whether a jump may pass over a middle cell for the moving player. */
 export function canJumpOverCell(board: Board, movingPlayer: Player, target: Coord): boolean {
   if (!isSingleChecker(board, target)) {
     return false;
@@ -66,6 +72,7 @@ export function canJumpOverCell(board: Board, movingPlayer: Player, target: Coor
   return true;
 }
 
+/** Enforces board shape invariants that must hold after every legal action. */
 export function validateBoard(board: Board): ValidationResult {
   for (const coord of allCoords()) {
     const cell = getCell(board, coord);
@@ -89,6 +96,7 @@ export function validateBoard(board: Board): ValidationResult {
   return { valid: true };
 }
 
+/** Validates board invariants and fixed total checker counts for both players. */
 export function validateGameState(state: GameState): ValidationResult {
   const boardValidation = validateBoard(state.board);
 
@@ -107,6 +115,7 @@ export function validateGameState(state: GameState): ValidationResult {
   return { valid: true };
 }
 
+/** Alias used by app layer to keep validator naming explicit. */
 export function isAdjacentCoord(source: Coord, target: Coord): boolean {
   return isAdjacent(source, target);
 }
