@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 import type { Cell, Coord } from '@/domain';
 import { text } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
@@ -16,7 +18,7 @@ type BoardCellProps = {
 };
 
 /** Single clickable board cell with visual state for selection and legal-target highlighting. */
-export function BoardCell({
+export const BoardCell = memo(function BoardCell({
   cell,
   coord,
   isDarkField,
@@ -47,4 +49,4 @@ export function BoardCell({
       {isLegalTarget ? <span className="board-cell__marker" /> : null}
     </button>
   );
-}
+});

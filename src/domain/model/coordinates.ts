@@ -3,6 +3,13 @@ import type { Column, Coord, Row } from '@/domain/model/types';
 
 export type DirectionVector = (typeof DIRECTION_VECTORS)[number];
 
+const ALL_COORDS = BOARD_ROWS.flatMap((row) =>
+  BOARD_COLUMNS.map((column) => createCoord(column, row)),
+);
+const DISPLAY_COORDS = [...BOARD_ROWS]
+  .reverse()
+  .flatMap((row) => BOARD_COLUMNS.map((column) => createCoord(column, row)));
+
 /** Converts typed column+row parts into canonical coordinate string (e.g. A1). */
 export function createCoord(column: Column, row: Row): Coord {
   return `${column}${row}`;
@@ -113,7 +120,10 @@ export function getJumpDirection(source: Coord, landing: Coord): DirectionVector
 
 /** Returns all board coordinates in row-major ascending order (A1..F6). */
 export function allCoords(): Coord[] {
-  return BOARD_ROWS.flatMap((row) =>
-    BOARD_COLUMNS.map((column) => createCoord(column, row)),
-  );
+  return ALL_COORDS;
+}
+
+/** Returns board coordinates in top-down display order (A6..F1). */
+export function displayCoords(): Coord[] {
+  return DISPLAY_COORDS;
 }

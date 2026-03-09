@@ -1,4 +1,6 @@
-import { allCoords, parseCoord } from '@/domain/model/coordinates';
+import { memo } from 'react';
+
+import { displayCoords, parseCoord } from '@/domain/model/coordinates';
 import type { Board as GameBoard, Coord } from '@/domain';
 import { text } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
@@ -14,8 +16,13 @@ type BoardProps = {
   onSelectCell: (coord: Coord) => void;
 };
 
+const DISPLAY_CELLS = displayCoords().map((coord) => ({
+  coord,
+  isDarkField: parseCoord(coord).row <= 3,
+}));
+
 /** Presentational board grid that renders cell state and click targets from store-derived props. */
-export function Board({
+export const Board = memo(function Board({
   board,
   language,
   legalTargets,
@@ -37,34 +44,19 @@ export function Board({
           </div>
           <div className="board-grid-wrap">
             <div className="board-grid">
-              {allCoords()
-                // Render from top row down so visual board matches human board orientation.
-                .sort((left, right) => {
-                  const leftCoord = parseCoord(left);
-                  const rightCoord = parseCoord(right);
-
-                  if (leftCoord.row === rightCoord.row) {
-                    return leftCoord.column.localeCompare(rightCoord.column);
-                  }
-
-                  return rightCoord.row - leftCoord.row;
-                })
-                .map((coord) => {
-                  const { row } = parseCoord(coord);
-                  return (
-                    <BoardCell
-                      key={coord}
-                      cell={board[coord]}
-                      coord={coord}
-                      isDarkField={row <= 3}
-                      language={language}
-                      isLegalTarget={targets.has(coord)}
-                      isSelected={selectedCell === coord}
-                      isSelectable={selectable.has(coord)}
-                      onClick={onSelectCell}
-                    />
-                  );
-                })}
+              {DISPLAY_CELLS.map(({ coord, isDarkField }) => (
+                <BoardCell
+                  key={coord}
+                  cell={board[coord]}
+                  coord={coord}
+                  isDarkField={isDarkField}
+                  language={language}
+                  isLegalTarget={targets.has(coord)}
+                  isSelected={selectedCell === coord}
+                  isSelectable={selectable.has(coord)}
+                  onClick={onSelectCell}
+                />
+              ))}
             </div>
             <div className="board-axis board-axis--columns">
               {['A', 'B', 'C', 'D', 'E', 'F'].map((column) => (
@@ -76,4 +68,4 @@ export function Board({
       </div>
     </section>
   );
-}
+});

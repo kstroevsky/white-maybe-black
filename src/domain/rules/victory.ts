@@ -9,12 +9,14 @@ import { FRONT_HOME_ROW, HOME_ROWS } from '@/domain/model/constants';
 import { allCoords, createCoord, parseCoord } from '@/domain/model/coordinates';
 import { hashPosition } from '@/domain/model/hash';
 import { withRuleDefaults } from '@/domain/model/ruleConfig';
-import type { Coord, GameState, Player, RuleConfig, Victory } from '@/domain/model/types';
+import type { Column, Coord, GameState, Player, RuleConfig, Victory } from '@/domain/model/types';
 
 /** Returns six front-row coordinates used by the six-stack victory check. */
 function getHomeFieldFrontCoords(player: Player): Coord[] {
   const homeRow = FRONT_HOME_ROW[player];
-  return ['A', 'B', 'C', 'D', 'E', 'F'].map((column) => createCoord(column as 'A', homeRow));
+  return ['A', 'B', 'C', 'D', 'E', 'F'].map((column) =>
+    createCoord(column as Column, homeRow),
+  );
 }
 
 /** True when all 18 player checkers are singles inside that player's home rows. */

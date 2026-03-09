@@ -1,6 +1,7 @@
 import {
   addCheckers,
-  cloneBoard,
+  cloneBoardStructure,
+  ensureMutableCell,
   getCellHeight,
   getController,
   getTopChecker,
@@ -44,7 +45,19 @@ type PartialJumpResolution = {
   visited: Set<string>;
 };
 
-type TargetMap = Record<ActionKind, Coord[]>;
+export type TargetMap = Record<ActionKind, Coord[]>;
+
+/** Creates empty per-action target buckets used by UI state and selectors. */
+export function createEmptyTargetMap(): TargetMap {
+  return {
+    jumpSequence: [],
+    manualUnfreeze: [],
+    climbOne: [],
+    splitOneFromStack: [],
+    splitTwoFromStack: [],
+    friendlyStackTransfer: [],
+  };
+}
 
 /** Builds unique key for jump-loop prevention (coord + full board state). */
 function createJumpStateKey(coord: Coord, board: Board): string {
@@ -62,7 +75,13 @@ function isWholeStackJump(board: Board, source: Coord): boolean {
 }
 
 /** Applies one jump segment, including freeze/unfreeze side effects on jumped checker. */
-function applySingleJumpSegment(board: Board, source: Coord, landing: Coord, movingPlayer: Player): ValidationResult {
+function applySingleJumpSegment(
+  board: Board,
+  source: Coord,
+  landing: Coord,
+  movingPlayer: Player,
+  clonedCoords: Set<Coord>,
+): ValidationResult {
   const direction = getJumpDirection(source, landing);
 
   if (!direction) {
@@ -82,6 +101,10 @@ function applySingleJumpSegment(board: Board, source: Coord, landing: Coord, mov
   if (!isEmptyCell(board, landing)) {
     return { valid: false, reason: `Jump landing ${landing} must be empty.` };
   }
+
+  ensureMutableCell(board, source, clonedCoords);
+  ensureMutableCell(board, landing, clonedCoords);
+  ensureMutableCell(board, middleCoord, clonedCoords);
 
   const movingCount = isWholeStackJump(board, source) ? getCellHeight(board, source) : 1;
   const movingCheckers = removeTopCheckers(board, source, movingCount);
@@ -111,7 +134,8 @@ function resolveJumpPath(
   movingPlayer: Player,
   visitedSeed?: Set<string>,
 ): ValidationResult | PartialJumpResolution {
-  const nextBoard = cloneBoard(board);
+  const nextBoard = cloneBoardStructure(board);
+  const clonedCoords = new Set<Coord>();
   let currentCoord = source;
   const visited = new Set(visitedSeed ?? []);
 
@@ -120,7 +144,13 @@ function resolveJumpPath(
   }
 
   for (const landing of path) {
-    const stepResult = applySingleJumpSegment(nextBoard, currentCoord, landing, movingPlayer);
+    const stepResult = applySingleJumpSegment(
+      nextBoard,
+      currentCoord,
+      landing,
+      movingPlayer,
+      clonedCoords,
+    );
 
     if (!stepResult.valid) {
       return stepResult;
@@ -260,7 +290,7 @@ export function getJumpContinuationTargets(
   }
 
   let currentCoord = source;
-  let currentBoard = cloneBoard(state.board);
+  let currentBoard = state.board;
   let visited = new Set<string>([createJumpStateKey(source, state.board)]);
 
   for (const landing of draftPath) {
@@ -288,7 +318,7 @@ export function getJumpContinuationTargets(
 }
 
 /** Groups legal actions by kind into UI-ready target buckets. */
-function buildTargetMap(actions: TurnAction[]): TargetMap {
+export function buildTargetMap(actions: TurnAction[]): TargetMap {
   return actions.reduce<TargetMap>(
     (map, action) => {
       switch (action.type) {
@@ -302,14 +332,7 @@ function buildTargetMap(actions: TurnAction[]): TargetMap {
           return map;
       }
     },
-    {
-      jumpSequence: [],
-      manualUnfreeze: [],
-      climbOne: [],
-      splitOneFromStack: [],
-      splitTwoFromStack: [],
-      friendlyStackTransfer: [],
-    },
+    createEmptyTargetMap(),
   );
 }
 
@@ -348,6 +371,7 @@ export function getLegalActionsForCell(
 
   const actions: TurnAction[] = [];
   const movingPlayer = getMovingPlayer(state.board, coord);
+  const splitTargets = isPlayerStack ? getSplitTargets(state.board, coord) : [];
 
   if (movingPlayer) {
     actions.push(
@@ -371,7 +395,7 @@ export function getLegalActionsForCell(
 
   if (isPlayerStack) {
     actions.push(
-      ...getSplitTargets(state.board, coord).map((target) => ({
+      ...splitTargets.map((target) => ({
         type: 'splitOneFromStack' as const,
         source: coord,
         target,
@@ -380,7 +404,7 @@ export function getLegalActionsForCell(
 
     if (getCellHeight(state.board, coord) >= 2) {
       actions.push(
-        ...getSplitTargets(state.board, coord).map((target) => ({
+        ...splitTargets.map((target) => ({
           type: 'splitTwoFromStack' as const,
           source: coord,
           target,
@@ -410,7 +434,37 @@ export function getLegalActions(
 
 /** Lightweight structural equality for action matching in validator checks. */
 function actionsEqual(left: TurnAction, right: TurnAction): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  switch (left.type) {
+    case 'manualUnfreeze':
+      return right.type === 'manualUnfreeze' && left.coord === right.coord;
+    case 'jumpSequence':
+      return (
+        right.type === 'jumpSequence' &&
+        left.source === right.source &&
+        left.path.length === right.path.length &&
+        left.path.every((coord, index) => coord === right.path[index])
+      );
+    case 'climbOne':
+      return right.type === 'climbOne' && left.source === right.source && left.target === right.target;
+    case 'splitOneFromStack':
+      return (
+        right.type === 'splitOneFromStack' &&
+        left.source === right.source &&
+        left.target === right.target
+      );
+    case 'splitTwoFromStack':
+      return (
+        right.type === 'splitTwoFromStack' &&
+        left.source === right.source &&
+        left.target === right.target
+      );
+    case 'friendlyStackTransfer':
+      return (
+        right.type === 'friendlyStackTransfer' &&
+        left.source === right.source &&
+        left.target === right.target
+      );
+  }
 }
 
 /** Shared source ownership validation for action variants with a source coordinate. */
@@ -520,43 +574,57 @@ export function applyActionToBoard(
     return validation;
   }
 
-  const board = cloneBoard(state.board);
+  return applyValidatedActionToBoard(state, action);
+}
+
+/** Applies a previously validated action while preserving references for untouched cells. */
+export function applyValidatedActionToBoard(
+  state: GameState,
+  action: TurnAction,
+): ValidationResult | Board {
+  const board = cloneBoardStructure(state.board);
+  const clonedCoords = new Set<Coord>();
 
   switch (action.type) {
     case 'manualUnfreeze':
+      ensureMutableCell(board, action.coord, clonedCoords);
       setSingleCheckerFrozen(board, action.coord, false);
       return board;
     case 'jumpSequence': {
-      const movingPlayer = getMovingPlayer(board, action.source);
+      const movingPlayer = getMovingPlayer(state.board, action.source);
 
       if (!movingPlayer) {
         return { valid: false, reason: `No moving player found at ${action.source}.` };
       }
 
-      const result = resolveJumpPath(board, action.source, action.path, movingPlayer);
+      const result = resolveJumpPath(state.board, action.source, action.path, movingPlayer);
 
       return 'board' in result ? result.board : result;
     }
     case 'climbOne': {
-      const movingCheckers = removeTopCheckers(
-        board,
-        action.source,
-        isStack(board, action.source) ? 1 : 1,
-      );
+      ensureMutableCell(board, action.source, clonedCoords);
+      ensureMutableCell(board, action.target, clonedCoords);
+      const movingCheckers = removeTopCheckers(board, action.source, 1);
       addCheckers(board, action.target, movingCheckers);
       return board;
     }
     case 'splitOneFromStack': {
+      ensureMutableCell(board, action.source, clonedCoords);
+      ensureMutableCell(board, action.target, clonedCoords);
       const movingCheckers = removeTopCheckers(board, action.source, 1);
       addCheckers(board, action.target, movingCheckers);
       return board;
     }
     case 'splitTwoFromStack': {
+      ensureMutableCell(board, action.source, clonedCoords);
+      ensureMutableCell(board, action.target, clonedCoords);
       const movingCheckers = removeTopCheckers(board, action.source, 2);
       addCheckers(board, action.target, movingCheckers);
       return board;
     }
     case 'friendlyStackTransfer': {
+      ensureMutableCell(board, action.source, clonedCoords);
+      ensureMutableCell(board, action.target, clonedCoords);
       const movingCheckers = removeTopCheckers(board, action.source, 1);
       addCheckers(board, action.target, movingCheckers);
       return board;

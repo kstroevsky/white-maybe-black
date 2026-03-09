@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { startTransition, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 
-import { getLegalActionsForCell, getScoreSummary } from '@/domain';
-import { allCoords } from '@/domain/model/coordinates';
 import { useGameStore } from '@/app/providers/GameStoreProvider';
+import type { Coord } from '@/domain';
 import { playerLabel, text } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
 import { Board } from '@/ui/board/Board';
@@ -10,6 +10,7 @@ import { ControlPanel } from '@/ui/panels/ControlPanel';
 import { InstructionsView } from '@/ui/panels/InstructionsView';
 
 type AppTab = 'game' | 'instructions';
+const NO_SELECTABLE_COORDS: Coord[] = [];
 
 /** Returns overlay title for turn handoff screen. */
 function getTurnOverlayTitle(language: Language, player: 'white' | 'black'): string {
@@ -25,55 +26,68 @@ function getPassOverlayLabel(language: Language, player: 'white' | 'black'): str
     : `Pass the device to ${playerLabel(language, player)}.`;
 }
 
-/** Root screen component wiring store state into board and control-panel presentation. */
+/** Board container subscribed only to board-facing store slices. */
+function BoardView() {
+  const { board, language, legalTargets, selectedCell, selectableCoords, onSelectCell } = useGameStore(
+    useShallow((state) => ({
+      board: state.gameState.board,
+      language: state.preferences.language,
+      legalTargets: state.legalTargets,
+      selectedCell: state.selectedCell,
+      selectableCoords:
+        state.interaction.type === 'passingDevice' ? NO_SELECTABLE_COORDS : state.selectableCoords,
+      onSelectCell: state.selectCell,
+    })),
+  );
+
+  return (
+    <Board
+      board={board}
+      language={language}
+      legalTargets={legalTargets}
+      selectedCell={selectedCell}
+      selectableCoords={selectableCoords}
+      onSelectCell={onSelectCell}
+    />
+  );
+}
+
+/** Shared hot-seat overlay isolated from non-overlay app state. */
+function TurnOverlay() {
+  const { interaction, language, acknowledgePassScreen } = useGameStore(
+    useShallow((state) => ({
+      interaction: state.interaction,
+      language: state.preferences.language,
+      acknowledgePassScreen: state.acknowledgePassScreen,
+    })),
+  );
+
+  if (interaction.type !== 'passingDevice' && interaction.type !== 'turnResolved') {
+    return null;
+  }
+
+  return (
+    <div className="pass-overlay" role="presentation">
+      <div className="pass-overlay__panel">
+        <p>{getTurnOverlayTitle(language, interaction.nextPlayer)}</p>
+        <small>{getPassOverlayLabel(language, interaction.nextPlayer)}</small>
+        <button type="button" className="button" onClick={acknowledgePassScreen}>
+          {text(language, 'continue')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Root screen component wiring isolated store-connected views into the app shell. */
 export function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('game');
-  const gameState = useGameStore((state) => state.gameState);
-  const ruleConfig = useGameStore((state) => state.ruleConfig);
-  const preferences = useGameStore((state) => state.preferences);
-  const interaction = useGameStore((state) => state.interaction);
-  const selectedCell = useGameStore((state) => state.selectedCell);
-  const selectedActionType = useGameStore((state) => state.selectedActionType);
-  const legalTargets = useGameStore((state) => state.legalTargets);
-  const draftJumpPath = useGameStore((state) => state.draftJumpPath);
-  const historyCursor = useGameStore((state) => state.historyCursor);
-  const canUndo = useGameStore((state) => state.past.length > 0);
-  const canRedo = useGameStore((state) => state.future.length > 0);
-  const exportBuffer = useGameStore((state) => state.exportBuffer);
-  const importBuffer = useGameStore((state) => state.importBuffer);
-  const importError = useGameStore((state) => state.importError);
-  const selectCell = useGameStore((state) => state.selectCell);
-  const chooseActionType = useGameStore((state) => state.chooseActionType);
-  const finishJumpSequence = useGameStore((state) => state.finishJumpSequence);
-  const cancelInteraction = useGameStore((state) => state.cancelInteraction);
-  const acknowledgePassScreen = useGameStore((state) => state.acknowledgePassScreen);
-  const undo = useGameStore((state) => state.undo);
-  const redo = useGameStore((state) => state.redo);
-  const restart = useGameStore((state) => state.restart);
-  const setRuleConfig = useGameStore((state) => state.setRuleConfig);
-  const setPreference = useGameStore((state) => state.setPreference);
-  const setImportBuffer = useGameStore((state) => state.setImportBuffer);
-  const importSessionFromBuffer = useGameStore((state) => state.importSessionFromBuffer);
-  const refreshExportBuffer = useGameStore((state) => state.refreshExportBuffer);
-  const language = preferences.language;
-  const availableActionKinds =
-    interaction.type === 'pieceSelected'
-      ? interaction.availableActions
-      : selectedCell
-        ? Array.from(
-            new Set(
-              getLegalActionsForCell(gameState, selectedCell, ruleConfig).map(
-                (action) => action.type,
-              ),
-            ),
-          )
-        : [];
-  const scoreSummary = ruleConfig.scoringMode === 'basic' ? getScoreSummary(gameState) : null;
-  const selectableCoords =
-    interaction.type === 'passingDevice'
-      ? []
-      // Cells are selectable only if they currently expose at least one legal action.
-      : allCoords().filter((coord) => getLegalActionsForCell(gameState, coord, ruleConfig).length);
+  const { language, setPreference } = useGameStore(
+    useShallow((state) => ({
+      language: state.preferences.language,
+      setPreference: state.setPreference,
+    })),
+  );
 
   return (
     <>
@@ -107,7 +121,7 @@ export function App() {
               role="tab"
               aria-selected={activeTab === 'game'}
               className={activeTab === 'game' ? 'tab-button tab-button--active' : 'tab-button'}
-              onClick={() => setActiveTab('game')}
+              onClick={() => startTransition(() => setActiveTab('game'))}
             >
               {text(language, 'tabGame')}
             </button>
@@ -116,7 +130,7 @@ export function App() {
               role="tab"
               aria-selected={activeTab === 'instructions'}
               className={activeTab === 'instructions' ? 'tab-button tab-button--active' : 'tab-button'}
-              onClick={() => setActiveTab('instructions')}
+              onClick={() => startTransition(() => setActiveTab('instructions'))}
             >
               {text(language, 'tabInstructions')}
             </button>
@@ -125,60 +139,15 @@ export function App() {
 
         {activeTab === 'game' ? (
           <div className="app-layout">
-            <Board
-              board={gameState.board}
-              language={language}
-              legalTargets={legalTargets}
-              selectedCell={selectedCell}
-              selectableCoords={selectableCoords}
-              onSelectCell={selectCell}
-            />
-            <ControlPanel
-              availableActionKinds={availableActionKinds}
-              canRedo={canRedo}
-              canUndo={canUndo}
-              draftJumpPath={draftJumpPath}
-              exportBuffer={exportBuffer}
-              gameState={gameState}
-              historyCursor={historyCursor}
-              importBuffer={importBuffer}
-              importError={importError}
-              interaction={interaction}
-              language={language}
-              preferences={preferences}
-              ruleConfig={ruleConfig}
-              scoreSummary={scoreSummary}
-              selectedActionType={selectedActionType}
-              selectedCell={selectedCell}
-              onCancel={cancelInteraction}
-              onChooseAction={chooseActionType}
-              onFinishJump={finishJumpSequence}
-              onImportBufferChange={setImportBuffer}
-              onImportSession={importSessionFromBuffer}
-              onRedo={redo}
-              onRefreshExport={refreshExportBuffer}
-              onRestart={restart}
-              onSetPreference={setPreference}
-              onSetRuleConfig={setRuleConfig}
-              onUndo={undo}
-            />
+            <BoardView />
+            <ControlPanel />
           </div>
         ) : (
           <InstructionsView language={language} />
         )}
       </main>
 
-      {(interaction.type === 'passingDevice' || interaction.type === 'turnResolved') && (
-        <div className="pass-overlay" role="presentation">
-          <div className="pass-overlay__panel">
-            <p>{getTurnOverlayTitle(language, interaction.nextPlayer)}</p>
-            <small>{getPassOverlayLabel(language, interaction.nextPlayer)}</small>
-            <button type="button" className="button" onClick={acknowledgePassScreen}>
-              {text(language, 'continue')}
-            </button>
-          </div>
-        </div>
-      )}
+      <TurnOverlay />
     </>
   );
 }

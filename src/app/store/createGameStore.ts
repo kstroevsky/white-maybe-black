@@ -2,30 +2,54 @@ import { createStore } from 'zustand/vanilla';
 
 import {
   applyAction,
+  buildTargetMap,
   checkVictory,
+  createEmptyTargetMap,
   createInitialState,
+  createUndoFrame,
+  deserializeSession,
   getJumpContinuationTargets,
   getLegalActionsForCell,
-  getLegalTargetsForCell,
+  getScoreSummary,
+  restoreGameState,
   serializeSession,
-  deserializeSession,
   withRuleDefaults,
 } from '@/domain';
-import type { ActionKind, Coord, GameState, RuleConfig, TurnAction } from '@/domain';
-import { SESSION_STORAGE_KEY } from '@/shared/constants/storage';
-import type { AppPreferences, InteractionState, SerializableSession } from '@/shared/types/session';
+import type {
+  ActionKind,
+  Coord,
+  GameState,
+  RuleConfig,
+  ScoreSummary,
+  TargetMap,
+  TurnAction,
+  TurnRecord,
+} from '@/domain';
+import { hashPosition } from '@/domain/model/hash';
+import { LEGACY_SESSION_STORAGE_KEYS, SESSION_STORAGE_KEY } from '@/shared/constants/storage';
+import type {
+  AppPreferences,
+  InteractionState,
+  SerializableSession,
+  UndoFrame,
+} from '@/shared/types/session';
 import { uniqueValues } from '@/shared/utils/collections';
 
 type GameStoreData = {
   ruleConfig: RuleConfig;
   preferences: AppPreferences;
   gameState: GameState;
-  past: GameState[];
-  future: GameState[];
+  turnLog: TurnRecord[];
+  past: UndoFrame[];
+  future: UndoFrame[];
   selectedCell: Coord | null;
   selectedActionType: ActionKind | null;
+  selectedTargetMap: TargetMap;
+  availableActionKinds: ActionKind[];
   draftJumpPath: Coord[];
   legalTargets: Coord[];
+  selectableCoords: Coord[];
+  scoreSummary: ScoreSummary | null;
   interaction: InteractionState;
   historyCursor: number;
   importBuffer: string;
@@ -56,9 +80,13 @@ const DEFAULT_PREFERENCES: AppPreferences = {
   language: 'russian',
 };
 
-/** Deep-clones game state snapshots for undo/redo safety. */
-function cloneGameState(state: GameState): GameState {
-  return structuredClone(state);
+/** Returns stable rule-config cache key used for store-side derivation memoization. */
+function ruleConfigKey(config: RuleConfig): string {
+  return [
+    config.allowNonAdjacentFriendlyStackTransfer ? '1' : '0',
+    config.drawRule,
+    config.scoringMode,
+  ].join(':');
 }
 
 /** Builds serializable session payload from store slices. */
@@ -66,14 +94,16 @@ function buildSession(
   ruleConfig: RuleConfig,
   preferences: AppPreferences,
   present: GameState,
-  past: GameState[],
-  future: GameState[],
+  turnLog: TurnRecord[],
+  past: UndoFrame[],
+  future: UndoFrame[],
 ): SerializableSession {
   return {
-    version: 1,
+    version: 2,
     ruleConfig,
     preferences,
-    present,
+    turnLog,
+    present: createUndoFrame(present),
     past,
     future,
   };
@@ -86,6 +116,10 @@ function persistSession(session: SerializableSession, storage?: Storage): void {
   }
 
   storage.setItem(SESSION_STORAGE_KEY, serializeSession(session));
+
+  for (const legacyKey of LEGACY_SESSION_STORAGE_KEYS) {
+    storage.removeItem(legacyKey);
+  }
 }
 
 /** Loads session from browser storage and drops corrupted payloads. */
@@ -94,18 +128,29 @@ function loadSession(storage?: Storage): SerializableSession | null {
     return null;
   }
 
-  const serialized = storage.getItem(SESSION_STORAGE_KEY);
+  const candidateKeys = [SESSION_STORAGE_KEY, ...LEGACY_SESSION_STORAGE_KEYS];
 
-  if (!serialized) {
-    return null;
+  for (const storageKey of candidateKeys) {
+    const serialized = storage.getItem(storageKey);
+
+    if (!serialized) {
+      continue;
+    }
+
+    try {
+      const session = deserializeSession(serialized);
+
+      if (storageKey !== SESSION_STORAGE_KEY) {
+        persistSession(session, storage);
+      }
+
+      return session;
+    } catch {
+      storage.removeItem(storageKey);
+    }
   }
 
-  try {
-    return deserializeSession(serialized);
-  } catch {
-    storage.removeItem(SESSION_STORAGE_KEY);
-    return null;
-  }
+  return null;
 }
 
 /** Returns fresh default session for first launch or reset fallback. */
@@ -113,7 +158,26 @@ function getDefaultSession(): SerializableSession {
   const ruleConfig = withRuleDefaults();
   const present = createInitialState(ruleConfig);
 
-  return buildSession(ruleConfig, DEFAULT_PREFERENCES, present, [], []);
+  return buildSession(ruleConfig, DEFAULT_PREFERENCES, present, [], [], []);
+}
+
+/** Rehydrates runtime game state and store slices from one serialized session. */
+function createRuntimeState(session: SerializableSession): Pick<
+  GameStoreData,
+  'ruleConfig' | 'preferences' | 'gameState' | 'turnLog' | 'past' | 'future' | 'historyCursor'
+> {
+  const turnLog = session.turnLog.slice();
+  const gameState = restoreGameState(session.present, turnLog);
+
+  return {
+    ruleConfig: session.ruleConfig,
+    preferences: session.preferences,
+    gameState,
+    turnLog,
+    past: session.past.slice(),
+    future: session.future.slice(),
+    historyCursor: session.present.historyCursor,
+  };
 }
 
 /** Creates selection/interaction slice in one place to keep updates consistent. */
@@ -121,43 +185,48 @@ function createSelectionState(
   source: Coord | null,
   actionType: ActionKind | null,
   interaction: InteractionState,
-  legalTargets: Coord[] = [],
-  draftJumpPath: Coord[] = [],
+  options: {
+    legalTargets?: Coord[];
+    draftJumpPath?: Coord[];
+    availableActionKinds?: ActionKind[];
+    selectedTargetMap?: TargetMap;
+  } = {},
 ): Pick<
   GameStoreData,
-  'selectedCell' | 'selectedActionType' | 'interaction' | 'legalTargets' | 'draftJumpPath'
+  | 'selectedCell'
+  | 'selectedActionType'
+  | 'selectedTargetMap'
+  | 'availableActionKinds'
+  | 'interaction'
+  | 'legalTargets'
+  | 'draftJumpPath'
 > {
   return {
     selectedCell: source,
     selectedActionType: actionType,
+    selectedTargetMap: options.selectedTargetMap ?? createEmptyTargetMap(),
+    availableActionKinds: options.availableActionKinds ?? [],
     interaction,
-    legalTargets,
-    draftJumpPath,
+    legalTargets: options.legalTargets ?? [],
+    draftJumpPath: options.draftJumpPath ?? [],
   };
 }
 
 /** Resets interaction state to neutral mode for current game status. */
 function createIdleSelection(gameState: GameState): Pick<
   GameStoreData,
-  'selectedCell' | 'selectedActionType' | 'interaction' | 'legalTargets' | 'draftJumpPath'
+  | 'selectedCell'
+  | 'selectedActionType'
+  | 'selectedTargetMap'
+  | 'availableActionKinds'
+  | 'interaction'
+  | 'legalTargets'
+  | 'draftJumpPath'
 > {
   return createSelectionState(
     null,
     null,
     gameState.status === 'gameOver' ? { type: 'gameOver' } : { type: 'idle' },
-  );
-}
-
-/** Regenerates export JSON from current in-memory session slices. */
-function deriveExportBuffer(data: Pick<GameStoreData, 'ruleConfig' | 'preferences' | 'gameState' | 'past' | 'future'>): string {
-  return serializeSession(
-    buildSession(
-      data.ruleConfig,
-      data.preferences,
-      data.gameState,
-      data.past,
-      data.future,
-    ),
   );
 }
 
@@ -173,20 +242,95 @@ export function createGameStore(options: StoreOptions = {}) {
     (typeof window !== 'undefined' ? window.localStorage : undefined);
   const initialSession =
     options.initialSession ?? loadSession(storage) ?? getDefaultSession();
+  const initialRuntimeState = createRuntimeState(initialSession);
+
+  let boardDerivationCache:
+    | {
+        key: string;
+        selectableCoords: Coord[];
+        scoreSummary: ScoreSummary | null;
+      }
+    | null = null;
+  let cellDerivationCache:
+    | {
+        key: string;
+        availableActionKinds: ActionKind[];
+        selectedTargetMap: TargetMap;
+      }
+    | null = null;
+
+  /** Computes board-level derived data once per position/config pair. */
+  function getBoardDerivation(
+    gameState: GameState,
+    ruleConfig: RuleConfig,
+  ): Pick<GameStoreData, 'selectableCoords' | 'scoreSummary'> {
+    const key = `${hashPosition(gameState)}::${ruleConfigKey(ruleConfig)}`;
+
+    if (boardDerivationCache?.key === key) {
+      return boardDerivationCache;
+    }
+
+    const selectableCoords =
+      gameState.status === 'gameOver'
+        ? []
+        : Object.keys(gameState.board).filter((coord) =>
+            getLegalActionsForCell(gameState, coord as Coord, ruleConfig).length > 0,
+          ) as Coord[];
+    const scoreSummary = ruleConfig.scoringMode === 'basic' ? getScoreSummary(gameState) : null;
+
+    boardDerivationCache = {
+      key,
+      selectableCoords,
+      scoreSummary,
+    };
+
+    return boardDerivationCache;
+  }
+
+  /** Computes selected-cell actions once per position/config/cell triple. */
+  function getCellDerivation(
+    gameState: GameState,
+    coord: Coord,
+    ruleConfig: RuleConfig,
+  ): Pick<GameStoreData, 'availableActionKinds' | 'selectedTargetMap'> {
+    const key = `${hashPosition(gameState)}::${ruleConfigKey(ruleConfig)}::${coord}`;
+
+    if (cellDerivationCache?.key === key) {
+      return cellDerivationCache;
+    }
+
+    const actions = getLegalActionsForCell(gameState, coord, ruleConfig);
+    const availableActionKinds = uniqueValues(actions.map((action) => action.type));
+    const targetMap = buildTargetMap(actions);
+
+    cellDerivationCache = {
+      key,
+      availableActionKinds,
+      selectedTargetMap: targetMap,
+    };
+
+    return cellDerivationCache;
+  }
+
+  const initialBoardDerivation = getBoardDerivation(
+    initialRuntimeState.gameState,
+    initialRuntimeState.ruleConfig,
+  );
   const initialInteraction: InteractionState =
-    initialSession.present.status === 'gameOver' ? { type: 'gameOver' } : { type: 'idle' };
+    initialRuntimeState.gameState.status === 'gameOver' ? { type: 'gameOver' } : { type: 'idle' };
 
   const store = createStore<GameStoreState>((set, get) => {
     /** Persists current core session slices after state transitions. */
     function persistCurrentState(nextState: Pick<
       GameStoreData,
-      'ruleConfig' | 'preferences' | 'gameState' | 'past' | 'future'
+      'ruleConfig' | 'preferences' | 'gameState' | 'turnLog' | 'past' | 'future'
     >): void {
       persistSession(
         buildSession(
           nextState.ruleConfig,
           nextState.preferences,
           nextState.gameState,
+          nextState.turnLog,
           nextState.past,
           nextState.future,
         ),
@@ -198,28 +342,31 @@ export function createGameStore(options: StoreOptions = {}) {
     function commitAction(action: TurnAction): void {
       const state = get();
       const nextGameState = applyAction(state.gameState, action, state.ruleConfig);
-      const nextPast = [...state.past, cloneGameState(state.gameState)];
-      const nextFuture: GameState[] = [];
+      const nextTurnLog = nextGameState.history;
+      const nextPast = [...state.past, createUndoFrame(state.gameState)];
+      const nextFuture: UndoFrame[] = [];
       const nextInteraction: InteractionState =
         nextGameState.status === 'gameOver'
           ? { type: 'gameOver' }
           : state.preferences.passDeviceOverlayEnabled
             ? { type: 'passingDevice', nextPlayer: nextGameState.currentPlayer }
             : { type: 'turnResolved', nextPlayer: nextGameState.currentPlayer };
+      const nextBoardDerivation = getBoardDerivation(nextGameState, state.ruleConfig);
       const nextData = {
         ruleConfig: state.ruleConfig,
         preferences: state.preferences,
         gameState: nextGameState,
+        turnLog: nextTurnLog,
         past: nextPast,
         future: nextFuture,
+        historyCursor: nextGameState.history.length,
+        ...nextBoardDerivation,
       };
 
       set({
         ...nextData,
         ...createSelectionState(null, null, nextInteraction),
-        historyCursor: nextPast.length,
         importError: null,
-        exportBuffer: deriveExportBuffer(nextData),
       });
       persistCurrentState(nextData);
 
@@ -239,35 +386,33 @@ export function createGameStore(options: StoreOptions = {}) {
 
     /** Replaces entire store session (used by import and initialization paths). */
     function applySession(session: SerializableSession): void {
-      set({
-        ruleConfig: session.ruleConfig,
-        preferences: session.preferences,
-        gameState: cloneGameState(session.present),
-        past: session.past.map(cloneGameState),
-        future: session.future.map(cloneGameState),
-        ...createIdleSelection(session.present),
-        historyCursor: session.past.length,
+      const runtimeState = createRuntimeState(session);
+      const nextBoardDerivation = getBoardDerivation(runtimeState.gameState, runtimeState.ruleConfig);
+
+      set((current) => ({
+        ...runtimeState,
+        ...nextBoardDerivation,
+        ...createIdleSelection(runtimeState.gameState),
+        importBuffer: '',
         importError: null,
-        exportBuffer: serializeSession(session),
-      });
+        exportBuffer: current.exportBuffer,
+      }));
       persistSession(session, storage);
     }
 
     return {
-      ruleConfig: initialSession.ruleConfig,
-      preferences: initialSession.preferences,
-      gameState: cloneGameState(initialSession.present),
-      past: initialSession.past.map(cloneGameState),
-      future: initialSession.future.map(cloneGameState),
+      ...initialRuntimeState,
+      ...initialBoardDerivation,
       selectedCell: null,
       selectedActionType: null,
+      selectedTargetMap: createEmptyTargetMap(),
+      availableActionKinds: [],
       draftJumpPath: [],
       legalTargets: [],
       interaction: initialInteraction,
-      historyCursor: initialSession.past.length,
       importBuffer: '',
       importError: null,
-      exportBuffer: serializeSession(initialSession),
+      exportBuffer: '',
       acknowledgePassScreen: () => {
         const state = get();
 
@@ -287,18 +432,7 @@ export function createGameStore(options: StoreOptions = {}) {
         const state = get();
         const source = state.selectedCell;
 
-        if (!source) {
-          return;
-        }
-
-        const legalTargets = getLegalTargetsForCell(state.gameState, source, state.ruleConfig);
-        const availableActions = uniqueValues(
-          getLegalActionsForCell(state.gameState, source, state.ruleConfig).map(
-            (action) => action.type,
-          ),
-        );
-
-        if (!availableActions.includes(actionType)) {
+        if (!source || !state.availableActionKinds.includes(actionType)) {
           return;
         }
 
@@ -308,7 +442,7 @@ export function createGameStore(options: StoreOptions = {}) {
         }
 
         if (actionType === 'jumpSequence') {
-          const firstTargets = uniqueValues(legalTargets.jumpSequence);
+          const firstTargets = uniqueValues(state.selectedTargetMap.jumpSequence);
           set({
             ...createSelectionState(
               source,
@@ -319,14 +453,18 @@ export function createGameStore(options: StoreOptions = {}) {
                 path: [],
                 availableTargets: firstTargets,
               },
-              firstTargets,
-              [],
+              {
+                legalTargets: firstTargets,
+                draftJumpPath: [],
+                availableActionKinds: state.availableActionKinds,
+                selectedTargetMap: state.selectedTargetMap,
+              },
             ),
           });
           return;
         }
 
-        const actionTargets = uniqueValues(legalTargets[actionType]);
+        const actionTargets = uniqueValues(state.selectedTargetMap[actionType]);
 
         set({
           ...createSelectionState(
@@ -338,7 +476,11 @@ export function createGameStore(options: StoreOptions = {}) {
               actionType,
               availableTargets: actionTargets,
             },
-            actionTargets,
+            {
+              legalTargets: actionTargets,
+              availableActionKinds: state.availableActionKinds,
+              selectedTargetMap: state.selectedTargetMap,
+            },
           ),
         });
       },
@@ -375,48 +517,63 @@ export function createGameStore(options: StoreOptions = {}) {
           return;
         }
 
-        const nextPast = [...state.past, cloneGameState(state.gameState)];
-        const nextFuture = state.future.slice(1).map(cloneGameState);
+        const nextGameState = restoreGameState(next, state.turnLog);
+        const nextPast = [...state.past, createUndoFrame(state.gameState)];
+        const nextFuture = state.future.slice(1);
+        const nextBoardDerivation = getBoardDerivation(nextGameState, state.ruleConfig);
         const nextData = {
           ruleConfig: state.ruleConfig,
           preferences: state.preferences,
-          gameState: cloneGameState(next),
+          gameState: nextGameState,
+          turnLog: state.turnLog,
           past: nextPast,
           future: nextFuture,
+          historyCursor: next.historyCursor,
+          ...nextBoardDerivation,
         };
 
         set({
           ...nextData,
-          ...createIdleSelection(next),
-          historyCursor: nextPast.length,
-          exportBuffer: deriveExportBuffer(nextData),
+          ...createIdleSelection(nextGameState),
         });
         persistCurrentState(nextData);
       },
       refreshExportBuffer: () => {
         const state = get();
         set({
-          exportBuffer: deriveExportBuffer(state),
+          exportBuffer: serializeSession(
+            buildSession(
+              state.ruleConfig,
+              state.preferences,
+              state.gameState,
+              state.turnLog,
+              state.past,
+              state.future,
+            ),
+            { pretty: true },
+          ),
         });
       },
       restart: () => {
         const state = get();
         const nextGameState = createInitialState(state.ruleConfig);
+        const nextBoardDerivation = getBoardDerivation(nextGameState, state.ruleConfig);
         const nextData = {
           ruleConfig: state.ruleConfig,
           preferences: state.preferences,
           gameState: nextGameState,
+          turnLog: [],
           past: [],
           future: [],
+          historyCursor: 0,
+          ...nextBoardDerivation,
         };
 
         set({
           ...nextData,
           ...createIdleSelection(nextGameState),
-          historyCursor: 0,
           importBuffer: '',
           importError: null,
-          exportBuffer: deriveExportBuffer(nextData),
         });
         persistCurrentState(nextData);
       },
@@ -470,14 +627,17 @@ export function createGameStore(options: StoreOptions = {}) {
           return;
         }
 
-        const actions = getLegalActionsForCell(state.gameState, coord, state.ruleConfig);
+        const { availableActionKinds, selectedTargetMap } = getCellDerivation(
+          state.gameState,
+          coord,
+          state.ruleConfig,
+        );
 
-        if (!actions.length) {
+        if (!availableActionKinds.length) {
           set(createIdleSelection(state.gameState));
           return;
         }
 
-        const availableActions = uniqueValues(actions.map((action) => action.type));
         set({
           ...createSelectionState(
             coord,
@@ -485,7 +645,11 @@ export function createGameStore(options: StoreOptions = {}) {
             {
               type: 'pieceSelected',
               source: coord,
-              availableActions,
+              availableActions: availableActionKinds,
+            },
+            {
+              availableActionKinds,
+              selectedTargetMap,
             },
           ),
         });
@@ -503,6 +667,7 @@ export function createGameStore(options: StoreOptions = {}) {
           ruleConfig: state.ruleConfig,
           preferences,
           gameState: state.gameState,
+          turnLog: state.turnLog,
           past: state.past,
           future: state.future,
         };
@@ -513,7 +678,6 @@ export function createGameStore(options: StoreOptions = {}) {
             !preferences.passDeviceOverlayEnabled && state.interaction.type === 'passingDevice'
               ? { type: 'idle' }
               : state.interaction,
-          exportBuffer: deriveExportBuffer(nextData),
         });
         persistCurrentState(nextData);
       },
@@ -530,7 +694,7 @@ export function createGameStore(options: StoreOptions = {}) {
 
           if (victory.type !== 'none') {
             nextGameState = {
-              ...cloneGameState(nextGameState),
+              ...nextGameState,
               status: 'gameOver',
               victory,
             };
@@ -538,19 +702,21 @@ export function createGameStore(options: StoreOptions = {}) {
         }
 
         // Rule toggles can immediately terminate active games (for example threefold draw on/off).
+        const nextBoardDerivation = getBoardDerivation(nextGameState, ruleConfig);
         const nextData = {
           ruleConfig,
           preferences: state.preferences,
           gameState: nextGameState,
+          turnLog: state.turnLog,
           past: state.past,
           future: state.future,
+          historyCursor: nextGameState.history.length,
+          ...nextBoardDerivation,
         };
 
         set({
-          ruleConfig,
-          gameState: nextGameState,
+          ...nextData,
           ...createIdleSelection(nextGameState),
-          exportBuffer: deriveExportBuffer(nextData),
         });
         persistCurrentState(nextData);
       },
@@ -562,21 +728,24 @@ export function createGameStore(options: StoreOptions = {}) {
           return;
         }
 
-        const nextPast = state.past.slice(0, -1).map(cloneGameState);
-        const nextFuture = [cloneGameState(state.gameState), ...state.future.map(cloneGameState)];
+        const previousGameState = restoreGameState(previous, state.turnLog);
+        const nextPast = state.past.slice(0, -1);
+        const nextFuture = [createUndoFrame(state.gameState), ...state.future];
+        const nextBoardDerivation = getBoardDerivation(previousGameState, state.ruleConfig);
         const nextData = {
           ruleConfig: state.ruleConfig,
           preferences: state.preferences,
-          gameState: cloneGameState(previous),
+          gameState: previousGameState,
+          turnLog: state.turnLog,
           past: nextPast,
           future: nextFuture,
+          historyCursor: previous.historyCursor,
+          ...nextBoardDerivation,
         };
 
         set({
           ...nextData,
-          ...createIdleSelection(previous),
-          historyCursor: nextPast.length,
-          exportBuffer: deriveExportBuffer(nextData),
+          ...createIdleSelection(previousGameState),
         });
         persistCurrentState(nextData);
       },

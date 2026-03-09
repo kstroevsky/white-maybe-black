@@ -32,12 +32,27 @@ export function cloneCell(cell: Cell): Cell {
   return { checkers: cell.checkers.map(cloneChecker) };
 }
 
+/** Clones only the board record so untouched cells can keep their original references. */
+export function cloneBoardStructure(board: Board): Board {
+  return { ...board };
+}
+
 /** Deep-clones the full board by coordinates. */
 export function cloneBoard(board: Board): Board {
   return allCoords().reduce((nextBoard, coord) => {
     nextBoard[coord] = cloneCell(board[coord]);
     return nextBoard;
   }, {} as Board);
+}
+
+/** Clones a cell on demand the first time a mutable move path touches it. */
+export function ensureMutableCell(board: Board, coord: Coord, clonedCoords: Set<Coord>): Cell {
+  if (!clonedCoords.has(coord)) {
+    board[coord] = cloneCell(board[coord]);
+    clonedCoords.add(coord);
+  }
+
+  return board[coord];
 }
 
 /** Returns the cell at a concrete coordinate. */

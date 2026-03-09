@@ -2,7 +2,7 @@ import { createSnapshot } from '@/domain/model/board';
 import { hashPosition } from '@/domain/model/hash';
 import { withRuleDefaults } from '@/domain/model/ruleConfig';
 import type { Board, GameState, Player, RuleConfig, TurnAction, ValidationResult } from '@/domain/model/types';
-import { applyActionToBoard, getLegalActions, validateAction } from '@/domain/rules/moveGeneration';
+import { applyValidatedActionToBoard, getLegalActions, validateAction } from '@/domain/rules/moveGeneration';
 import { checkVictory } from '@/domain/rules/victory';
 
 /** Returns the opposing player for turn handoff. */
@@ -18,13 +18,12 @@ function isValidationResult(value: Board | ValidationResult): value is Validatio
 /** Creates baseline next-turn state before pass/victory post-processing. */
 function nextStateSeed(state: GameState, board: GameState['board'], player: Player): GameState {
   return {
-    ...createSnapshot(state),
     board,
     currentPlayer: player,
     moveNumber: state.moveNumber + 1,
     status: 'active',
     victory: { type: 'none' },
-    history: state.history.map((entry) => structuredClone(entry)),
+    history: state.history,
     positionCounts: { ...state.positionCounts },
   };
 }
@@ -52,7 +51,7 @@ export function applyAction(
     throw new Error(validationError);
   }
 
-  const nextBoard = applyActionToBoard(state, action, resolvedConfig);
+  const nextBoard = applyValidatedActionToBoard(state, action);
 
   if (isValidationResult(nextBoard)) {
     if (!nextBoard.valid) {

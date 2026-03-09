@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 import type { Checker } from '@/domain';
 
 type CheckerStackProps = {
@@ -11,7 +13,10 @@ function checkerClass(owner: Checker['owner']): string {
 }
 
 /** Renders checker stack with visible layer offsets and frozen marker for frozen singles. */
-export function CheckerStack({ checkers, emphasized = false }: CheckerStackProps) {
+export const CheckerStack = memo(function CheckerStack({
+  checkers,
+  emphasized = false,
+}: CheckerStackProps) {
   return (
     <div
       className={`checker-stack${emphasized ? ' checker-stack--emphasized' : ''}`}
@@ -43,4 +48,4 @@ export function CheckerStack({ checkers, emphasized = false }: CheckerStackProps
       })}
     </div>
   );
-}
+});

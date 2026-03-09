@@ -9,13 +9,22 @@ import {
   getLegalActions,
   getLegalActionsForCell,
   getScoreSummary,
+  restoreGameState,
   serializeSession,
   validateAction,
 } from '@/domain';
 import { createEmptyBoard } from '@/domain/model/board';
 import { hashPosition } from '@/domain/model/hash';
 import type { GameState } from '@/domain/model/types';
-import { createSession, boardWithPieces, checker, gameStateWithBoard, resetFactoryIds, withConfig } from '@/test/factories';
+import {
+  boardWithPieces,
+  checker,
+  createSession,
+  gameStateWithBoard,
+  resetFactoryIds,
+  undoFrame,
+  withConfig,
+} from '@/test/factories';
 
 describe('game engine', () => {
   beforeEach(() => {
@@ -271,6 +280,37 @@ describe('game engine', () => {
     });
   });
 
+  it('preserves untouched board cell references after legal moves', () => {
+    const initialState = createInitialState();
+    const climbedState = applyAction(
+      initialState,
+      { type: 'climbOne', source: 'A1', target: 'B2' },
+      withConfig(),
+    );
+
+    expect(climbedState.board).not.toBe(initialState.board);
+    expect(climbedState.board.A1).not.toBe(initialState.board.A1);
+    expect(climbedState.board.B2).not.toBe(initialState.board.B2);
+    expect(climbedState.board.F6).toBe(initialState.board.F6);
+
+    const jumpState = gameStateWithBoard(
+      boardWithPieces({
+        A1: [checker('white')],
+        B2: [checker('black')],
+      }),
+    );
+    const afterJump = applyAction(
+      jumpState,
+      { type: 'jumpSequence', source: 'A1', path: ['C3'] },
+      withConfig(),
+    );
+
+    expect(afterJump.board.A1).not.toBe(jumpState.board.A1);
+    expect(afterJump.board.B2).not.toBe(jumpState.board.B2);
+    expect(afterJump.board.C3).not.toBe(jumpState.board.C3);
+    expect(afterJump.board.F6).toBe(jumpState.board.F6);
+  });
+
   it('detects home-field and six-stack victories', () => {
     const board = createEmptyBoard();
     const whiteCoords = [
@@ -383,9 +423,14 @@ describe('game engine', () => {
   it('serializes and deserializes sessions', () => {
     const session = createSession(createInitialState());
     const serialized = serializeSession(session);
+    const prettySerialized = serializeSession(session, { pretty: true });
     const restored = deserializeSession(serialized);
+    const restoredGameState = restoreGameState(restored.present, restored.turnLog);
 
-    expect(restored.present.currentPlayer).toBe(session.present.currentPlayer);
+    expect(serialized).not.toContain('\n');
+    expect(prettySerialized).toContain('\n');
+    expect(restored.version).toBe(2);
+    expect(restoredGameState.currentPlayer).toBe('white');
     expect(() => deserializeSession('{"version":1,"present":{}}')).toThrow();
   });
 
@@ -408,12 +453,51 @@ describe('game engine', () => {
       future: [],
     });
     const restored = deserializeSession(legacySerialized);
-    const currentHash = hashPosition(restored.present);
+    const restoredState = restoreGameState(restored.present, restored.turnLog);
+    const currentHash = hashPosition(restoredState);
 
     expect(restored.preferences.language).toBe('russian');
     expect(restored.present.positionCounts).toEqual({
       [currentHash]: 1,
     });
+  });
+
+  it('restores shared-turn-log sessions with history cursor and position counts intact', () => {
+    const config = withConfig();
+    const state0 = createInitialState(config);
+    const state1 = applyAction(state0, { type: 'climbOne', source: 'A1', target: 'B2' }, config);
+    const state2 = applyAction(state1, getLegalActions(state1, config)[0], config);
+    const session = createSession(state2, {
+      turnLog: state2.history,
+      past: [undoFrame(state0), undoFrame(state1)],
+    });
+    const restored = deserializeSession(serializeSession(session));
+    const restoredState = restoreGameState(restored.present, restored.turnLog);
+
+    expect(restored.present.historyCursor).toBe(state2.history.length);
+    expect(restoredState.history).toHaveLength(2);
+    expect(restoredState.positionCounts).toEqual(state2.positionCounts);
+    expect(restoredState.victory).toEqual(state2.victory);
+  });
+
+  it('keeps v2 serialized sessions well below the legacy nested-history baseline', () => {
+    const config = withConfig();
+    const playoutStates = [createInitialState(config)];
+    let state = playoutStates[0];
+
+    for (let turn = 0; turn < 24; turn += 1) {
+      const actions = getLegalActions(state, config);
+      state = applyAction(state, actions[turn % actions.length], config);
+      playoutStates.push(state);
+    }
+
+    const session = createSession(state, {
+      turnLog: state.history,
+      past: playoutStates.slice(0, -1).map(undoFrame),
+    });
+    const serialized = serializeSession(session);
+
+    expect(serialized.length).toBeLessThan(1_000_000);
   });
 
   it('computes score summaries and maintains invariants over random playouts', () => {

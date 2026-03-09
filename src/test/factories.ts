@@ -1,3 +1,4 @@
+import { createUndoFrame } from '@/domain/serialization/session';
 import { createEmptyBoard } from '@/domain/model/board';
 import { hashPosition } from '@/domain/model/hash';
 import { withRuleDefaults } from '@/domain/model/ruleConfig';
@@ -9,7 +10,7 @@ import type {
   Player,
   RuleConfig,
 } from '@/domain/model/types';
-import type { AppPreferences, SerializableSession } from '@/shared/types/session';
+import type { AppPreferences, SerializableSession, UndoFrame } from '@/shared/types/session';
 
 let checkerIndex = 1;
 
@@ -78,13 +79,18 @@ export function createSession(
     };
 
   return {
-    version: 1,
+    version: 2,
     ruleConfig,
     preferences,
-    present,
+    turnLog: overrides.turnLog ?? present.history,
+    present: overrides.present ?? createUndoFrame(present),
     past: overrides.past ?? [],
     future: overrides.future ?? [],
   };
+}
+
+export function undoFrame(state: GameState): UndoFrame {
+  return createUndoFrame(state);
 }
 
 export function withConfig(overrides: Partial<RuleConfig> = {}): RuleConfig {
