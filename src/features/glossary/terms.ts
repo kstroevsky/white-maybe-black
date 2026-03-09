@@ -30,8 +30,10 @@ const GLOSSARY: Record<GlossaryTermId, GlossaryEntry> = {
       russian: 'Прыжок',
     },
     description: {
-      english: 'One move made of one or more consecutive jumps over single checkers into empty cells.',
-      russian: 'Один ход из одного или нескольких подряд идущих прыжков через одиночные шашки на пустые клетки.',
+      english:
+        'A jump is applied one segment at a time over single checkers into empty cells. If another segment is available, you must continue with the same moving unit.',
+      russian:
+        'Прыжок применяется по одному участку через одиночные шашки на пустые клетки. Если следующий участок доступен, нужно продолжать той же движущейся фигурой.',
     },
   },
   manualUnfreeze: {

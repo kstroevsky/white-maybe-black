@@ -61,7 +61,6 @@ export type GameStoreState = GameStoreData & {
   acknowledgePassScreen: () => void;
   cancelInteraction: () => void;
   chooseActionType: (actionType: ActionKind) => void;
-  finishJumpSequence: () => void;
   importSessionFromBuffer: () => void;
   redo: () => void;
   refreshExportBuffer: () => void;
@@ -230,6 +229,48 @@ function createIdleSelection(gameState: GameState): Pick<
   );
 }
 
+/** Creates jump-only action buckets for forced continuation UI states. */
+function createJumpOnlyTargetMap(targets: Coord[]): TargetMap {
+  const targetMap = createEmptyTargetMap();
+  targetMap.jumpSequence = targets.slice();
+  return targetMap;
+}
+
+type JumpContinuationSelection = {
+  source: Coord;
+  targets: Coord[];
+};
+
+/** Detects whether the active player must continue a jump chain from the latest landing. */
+function getJumpContinuationSelection(gameState: GameState): JumpContinuationSelection | null {
+  if (gameState.status === 'gameOver') {
+    return null;
+  }
+
+  const lastRecord = gameState.history.at(-1);
+
+  if (!lastRecord || lastRecord.action.type !== 'jumpSequence' || lastRecord.actor !== gameState.currentPlayer) {
+    return null;
+  }
+
+  const source = lastRecord.action.path.at(-1);
+
+  if (!source) {
+    return null;
+  }
+
+  const targets = uniqueValues(getJumpContinuationTargets(gameState, source, []));
+
+  if (!targets.length) {
+    return null;
+  }
+
+  return {
+    source,
+    targets,
+  };
+}
+
 type StoreOptions = {
   initialSession?: SerializableSession;
   storage?: Storage;
@@ -316,8 +357,17 @@ export function createGameStore(options: StoreOptions = {}) {
     initialRuntimeState.gameState,
     initialRuntimeState.ruleConfig,
   );
-  const initialInteraction: InteractionState =
-    initialRuntimeState.gameState.status === 'gameOver' ? { type: 'gameOver' } : { type: 'idle' };
+  const initialJumpContinuation = getJumpContinuationSelection(initialRuntimeState.gameState);
+  const initialInteraction: InteractionState = initialJumpContinuation
+    ? {
+        type: 'buildingJumpChain',
+        source: initialJumpContinuation.source,
+        path: [],
+        availableTargets: initialJumpContinuation.targets,
+      }
+    : initialRuntimeState.gameState.status === 'gameOver'
+      ? { type: 'gameOver' }
+      : { type: 'idle' };
 
   const store = createStore<GameStoreState>((set, get) => {
     /** Persists current core session slices after state transitions. */
@@ -345,8 +395,15 @@ export function createGameStore(options: StoreOptions = {}) {
       const nextTurnLog = nextGameState.history;
       const nextPast = [...state.past, createUndoFrame(state.gameState)];
       const nextFuture: UndoFrame[] = [];
-      const nextInteraction: InteractionState =
-        nextGameState.status === 'gameOver'
+      const jumpContinuation = getJumpContinuationSelection(nextGameState);
+      const nextInteraction: InteractionState = jumpContinuation
+        ? {
+            type: 'buildingJumpChain',
+            source: jumpContinuation.source,
+            path: [],
+            availableTargets: jumpContinuation.targets,
+          }
+        : nextGameState.status === 'gameOver'
           ? { type: 'gameOver' }
           : state.preferences.passDeviceOverlayEnabled
             ? { type: 'passingDevice', nextPlayer: nextGameState.currentPlayer }
@@ -365,7 +422,19 @@ export function createGameStore(options: StoreOptions = {}) {
 
       set({
         ...nextData,
-        ...createSelectionState(null, null, nextInteraction),
+        ...(jumpContinuation
+          ? createSelectionState(
+              jumpContinuation.source,
+              'jumpSequence',
+              nextInteraction,
+              {
+                legalTargets: jumpContinuation.targets,
+                draftJumpPath: [],
+                availableActionKinds: ['jumpSequence'],
+                selectedTargetMap: createJumpOnlyTargetMap(jumpContinuation.targets),
+              },
+            )
+          : createSelectionState(null, null, nextInteraction)),
         importError: null,
       });
       persistCurrentState(nextData);
@@ -388,11 +457,29 @@ export function createGameStore(options: StoreOptions = {}) {
     function applySession(session: SerializableSession): void {
       const runtimeState = createRuntimeState(session);
       const nextBoardDerivation = getBoardDerivation(runtimeState.gameState, runtimeState.ruleConfig);
+      const jumpContinuation = getJumpContinuationSelection(runtimeState.gameState);
 
       set((current) => ({
         ...runtimeState,
         ...nextBoardDerivation,
-        ...createIdleSelection(runtimeState.gameState),
+        ...(jumpContinuation
+          ? createSelectionState(
+              jumpContinuation.source,
+              'jumpSequence',
+              {
+                type: 'buildingJumpChain',
+                source: jumpContinuation.source,
+                path: [],
+                availableTargets: jumpContinuation.targets,
+              },
+              {
+                legalTargets: jumpContinuation.targets,
+                draftJumpPath: [],
+                availableActionKinds: ['jumpSequence'],
+                selectedTargetMap: createJumpOnlyTargetMap(jumpContinuation.targets),
+              },
+            )
+          : createIdleSelection(runtimeState.gameState)),
         importBuffer: '',
         importError: null,
         exportBuffer: current.exportBuffer,
@@ -403,12 +490,14 @@ export function createGameStore(options: StoreOptions = {}) {
     return {
       ...initialRuntimeState,
       ...initialBoardDerivation,
-      selectedCell: null,
-      selectedActionType: null,
-      selectedTargetMap: createEmptyTargetMap(),
-      availableActionKinds: [],
+      selectedCell: initialJumpContinuation?.source ?? null,
+      selectedActionType: initialJumpContinuation ? 'jumpSequence' : null,
+      selectedTargetMap: initialJumpContinuation
+        ? createJumpOnlyTargetMap(initialJumpContinuation.targets)
+        : createEmptyTargetMap(),
+      availableActionKinds: initialJumpContinuation ? ['jumpSequence'] : [],
       draftJumpPath: [],
-      legalTargets: [],
+      legalTargets: initialJumpContinuation?.targets ?? [],
       interaction: initialInteraction,
       importBuffer: '',
       importError: null,
@@ -426,7 +515,31 @@ export function createGameStore(options: StoreOptions = {}) {
       },
       cancelInteraction: () => {
         const state = get();
-        set(createIdleSelection(state.gameState));
+        const jumpContinuation = getJumpContinuationSelection(state.gameState);
+
+        if (!jumpContinuation) {
+          set(createIdleSelection(state.gameState));
+          return;
+        }
+
+        set(
+          createSelectionState(
+            jumpContinuation.source,
+            'jumpSequence',
+            {
+              type: 'buildingJumpChain',
+              source: jumpContinuation.source,
+              path: [],
+              availableTargets: jumpContinuation.targets,
+            },
+            {
+              legalTargets: jumpContinuation.targets,
+              draftJumpPath: [],
+              availableActionKinds: ['jumpSequence'],
+              selectedTargetMap: createJumpOnlyTargetMap(jumpContinuation.targets),
+            },
+          ),
+        );
       },
       chooseActionType: (actionType) => {
         const state = get();
@@ -482,19 +595,6 @@ export function createGameStore(options: StoreOptions = {}) {
               selectedTargetMap: state.selectedTargetMap,
             },
           ),
-        });
-      },
-      finishJumpSequence: () => {
-        const state = get();
-
-        if (state.selectedActionType !== 'jumpSequence' || !state.selectedCell || !state.draftJumpPath.length) {
-          return;
-        }
-
-        commitAction({
-          type: 'jumpSequence',
-          source: state.selectedCell,
-          path: state.draftJumpPath,
         });
       },
       importSessionFromBuffer: () => {
@@ -590,30 +690,11 @@ export function createGameStore(options: StoreOptions = {}) {
           state.legalTargets.includes(coord)
         ) {
           if (state.selectedActionType === 'jumpSequence') {
-            // Jump selection is fully manual: each click appends one landing.
-            const nextPath = [...state.draftJumpPath, coord];
-            const nextTargets = uniqueValues(
-              getJumpContinuationTargets(state.gameState, state.selectedCell, nextPath),
-            );
-
-            if (!nextTargets.length) {
-              commitAction({
-                type: 'jumpSequence',
-                source: state.selectedCell,
-                path: nextPath,
-              });
-              return;
-            }
-
-            set({
-              draftJumpPath: nextPath,
-              legalTargets: nextTargets,
-              interaction: {
-                type: 'buildingJumpChain',
-                source: state.selectedCell,
-                path: nextPath,
-                availableTargets: nextTargets,
-              },
+            // Jump actions resolve immediately one segment at a time.
+            commitAction({
+              type: 'jumpSequence',
+              source: state.selectedCell,
+              path: [coord],
             });
             return;
           }

@@ -80,7 +80,6 @@ function StatusSection() {
 function MoveInputSection() {
   const {
     availableActionKinds,
-    draftJumpPath,
     language,
     selectedActionType,
     selectedCell,
@@ -89,7 +88,6 @@ function MoveInputSection() {
   } = useGameStore(
     useShallow((state) => ({
       availableActionKinds: state.availableActionKinds,
-      draftJumpPath: state.draftJumpPath,
       language: state.preferences.language,
       selectedActionType: state.selectedActionType,
       selectedCell: state.selectedCell,
@@ -121,11 +119,10 @@ function MoveInputSection() {
           <p className="panel__text">{text(language, 'noActionsSelected')}</p>
         )}
       </div>
-      {selectedActionType === 'jumpSequence' && draftJumpPath.length ? (
+      {selectedActionType === 'jumpSequence' && selectedCell ? (
         <>
           <p className="panel__text">
-            <strong>{text(language, 'jumpPathLabel')}:</strong>{' '}
-            {selectedCell} {'->'} {draftJumpPath.join(' -> ')}
+            <strong>{text(language, 'jumpPathLabel')}:</strong> {selectedCell}
           </p>
           <p className="panel__text">{text(language, 'jumpPathHint')}</p>
         </>

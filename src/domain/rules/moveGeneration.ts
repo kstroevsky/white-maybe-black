@@ -262,36 +262,20 @@ function getFriendlyTransferTargets(
   });
 }
 
-/** Recursively enumerates all legal jump sequences from a source coordinate. */
-function collectJumpSequences(
+/** Returns immediate single-segment jump actions from one source coordinate. */
+function getImmediateJumpActions(
   board: Board,
   source: Coord,
   movingPlayer: Player,
-  path: Coord[],
-  visited: Set<string>,
 ): JumpSequenceAction[] {
-  const actions: JumpSequenceAction[] = path.length
-    ? [{ type: 'jumpSequence', source, path }]
-    : [];
-  const currentCoord = path.at(-1) ?? source;
-  const targets = getJumpTargetsOnBoard(board, currentCoord, movingPlayer);
-
-  for (const target of targets) {
-    const result = resolveJumpPath(board, currentCoord, [target], movingPlayer, visited);
-
-    if (!('board' in result)) {
-      continue;
-    }
-
-    actions.push(
-      ...collectJumpSequences(result.board, source, movingPlayer, [...path, target], result.visited),
-    );
-  }
-
-  return actions;
+  return getJumpTargetsOnBoard(board, source, movingPlayer).map((target) => ({
+    type: 'jumpSequence',
+    source,
+    path: [target],
+  }));
 }
 
-/** Returns next legal jump targets when the UI is building a multi-jump path. */
+/** Returns next legal jump targets from a source plus optional pre-applied draft path. */
 export function getJumpContinuationTargets(
   state: GameState,
   source: Coord,
@@ -388,15 +372,7 @@ export function getLegalActionsForCell(
   const splitTargets = isPlayerStack ? getSplitTargets(state.board, coord) : [];
 
   if (movingPlayer) {
-    actions.push(
-      ...collectJumpSequences(
-        state.board,
-        coord,
-        movingPlayer,
-        [],
-        new Set([createJumpStateKey(coord, state.board)]),
-      ),
-    );
+    actions.push(...getImmediateJumpActions(state.board, coord, movingPlayer));
   }
 
   actions.push(
@@ -545,14 +521,25 @@ export function validateAction(
         return sourceValidation;
       }
 
-      if (!action.path.length) {
-        return { valid: false, reason: 'Jump sequence must contain at least one landing.' };
+      if (action.path.length !== 1) {
+        return {
+          valid: false,
+          reason: 'Jump actions are applied one landing at a time.',
+        };
       }
 
       const sourceTopChecker = getTopChecker(state.board, action.source);
 
       if (!sourceTopChecker || sourceTopChecker.frozen) {
         return { valid: false, reason: 'Frozen single checkers cannot jump.' };
+      }
+
+      const legalAction = getLegalActionsForCell(state, action.source, config).find((candidate) =>
+        actionsEqual(candidate, action),
+      );
+
+      if (legalAction) {
+        return { valid: true };
       }
 
       const movingPlayer = sourceTopChecker.owner;
@@ -568,7 +555,10 @@ export function validateAction(
         return resolution;
       }
 
-      return { valid: true };
+      return {
+        valid: false,
+        reason: `Illegal jump from ${action.source} to ${action.path[0]}.`,
+      };
     }
     case 'climbOne':
     case 'moveSingleToEmpty':

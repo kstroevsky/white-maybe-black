@@ -20,9 +20,8 @@ const TEXT = {
     selectedCellLabel: 'Selected cell',
     moveInput: 'Move input',
     noActionsSelected: 'Select a checker or controlled stack to see actions.',
-    finishJump: 'Finish jump',
-    jumpPathLabel: 'Jump path',
-    jumpPathHint: 'Choose each highlighted landing manually. The jump is applied after the final landing.',
+    jumpPathLabel: 'Jump source',
+    jumpPathHint: 'Each highlighted landing applies one jump segment immediately.',
     clear: 'Clear',
     scoreMode: 'Score mode',
     rulesAndSession: 'Rules and session',
@@ -70,9 +69,8 @@ const TEXT = {
     selectedCellLabel: 'Выбранная клетка',
     moveInput: 'Выбор действия',
     noActionsSelected: 'Выберите шашку или свою горку, чтобы увидеть ходы.',
-    finishJump: 'Завершить прыжок',
-    jumpPathLabel: 'Путь прыжка',
-    jumpPathHint: 'Выбирайте каждую подсвеченную цель вручную. Прыжок применяется после последней точки.',
+    jumpPathLabel: 'Источник прыжка',
+    jumpPathHint: 'Каждая подсвеченная цель сразу применяет один участок прыжка.',
     clear: 'Сбросить',
     scoreMode: 'Подсчёт',
     rulesAndSession: 'Правила и партия',
@@ -161,13 +159,9 @@ export function describeInteraction(language: Language, interaction: Interaction
         ? `Выберите цель для «${actionLabel(language, interaction.actionType)}» из ${interaction.source}.`
         : `Choose a target for ${actionLabel(language, interaction.actionType)} from ${interaction.source}.`;
     case 'buildingJumpChain':
-      return interaction.path.length
-        ? language === 'russian'
-          ? `Путь прыжка: ${interaction.source} -> ${interaction.path.join(' -> ')}`
-          : `Jump path: ${interaction.source} -> ${interaction.path.join(' -> ')}`
-        : language === 'russian'
-          ? `Соберите цепочку прыжка из ${interaction.source}.`
-          : `Build a jump path from ${interaction.source}.`;
+      return language === 'russian'
+        ? `Выберите следующую цель прыжка из ${interaction.source}. Каждый клик применяет один участок сразу.`
+        : `Choose the next jump landing from ${interaction.source}. Each click applies one segment immediately.`;
     case 'turnResolved':
       return language === 'russian'
         ? `Ход завершён. Дальше ходят ${playerLabel(language, interaction.nextPlayer).toLowerCase()}.`

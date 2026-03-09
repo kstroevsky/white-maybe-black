@@ -2,7 +2,12 @@ import { createSnapshot } from '@/domain/model/board';
 import { hashPosition } from '@/domain/model/hash';
 import { withRuleDefaults } from '@/domain/model/ruleConfig';
 import type { Board, GameState, Player, RuleConfig, TurnAction, ValidationResult } from '@/domain/model/types';
-import { applyValidatedActionToBoard, getLegalActions, validateAction } from '@/domain/rules/moveGeneration';
+import {
+  applyValidatedActionToBoard,
+  getJumpContinuationTargets,
+  getLegalActions,
+  validateAction,
+} from '@/domain/rules/moveGeneration';
 import { checkVictory } from '@/domain/rules/victory';
 
 /** Returns the opposing player for turn handoff. */
@@ -31,6 +36,32 @@ function nextStateSeed(state: GameState, board: GameState['board'], player: Play
 /** Counts legal actions for a specified player in a hypothetical state. */
 function getLegalActionCount(state: GameState, player: Player, config: RuleConfig): number {
   return getLegalActions({ ...state, currentPlayer: player }, config).length;
+}
+
+/** Returns true when the acting player must continue jumping from the new landing. */
+function hasJumpContinuation(
+  state: GameState,
+  action: TurnAction,
+  nextBoard: GameState['board'],
+  actor: Player,
+): boolean {
+  if (action.type !== 'jumpSequence') {
+    return false;
+  }
+
+  const landing = action.path.at(-1);
+
+  if (!landing) {
+    return false;
+  }
+
+  const continuationState: GameState = {
+    ...state,
+    board: nextBoard,
+    currentPlayer: actor,
+  };
+
+  return getJumpContinuationTargets(continuationState, landing, []).length > 0;
 }
 
 /** Authoritative state transition: validate, apply, resolve pass/victory, append history. */
@@ -62,7 +93,10 @@ export function applyAction(
   }
 
   const actor = state.currentPlayer;
-  const immediateState = nextStateSeed(state, nextBoard, getOpponent(actor));
+  const nextPlayer = hasJumpContinuation(state, action, nextBoard, actor)
+    ? actor
+    : getOpponent(actor);
+  const immediateState = nextStateSeed(state, nextBoard, nextPlayer);
   const winAfterMove = checkVictory(immediateState, resolvedConfig);
   const autoPasses: Player[] = [];
   let finalState = immediateState;
