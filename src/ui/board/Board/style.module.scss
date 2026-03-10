@@ -21,7 +21,6 @@
   --axis-gap: 8px;
   --board-size: 62vh;
 
-  height: 100%;
   min-height: 0;
   display: grid;
   grid-template-columns: var(--axis-col-size) minmax(0, 1fr);
@@ -84,7 +83,7 @@
   .layout {
     --axis-col-size: 28px;
     --axis-gap: 6px;
-    --board-size: 42vh;
+    --board-size: min(100%, 560px);
   }
 
   .axisRows {
@@ -97,7 +96,21 @@
 }
 
 @include mixins.max-width(tokens.$bp-sm) {
+  .frame {
+    padding: 6px;
+  }
+
   .layout {
-    --board-size: 34vh;
+    --axis-col-size: 24px;
+    --axis-gap: 5px;
+    --board-size: min(100%, 420px);
+  }
+
+  .axisRows {
+    font-size: 0.95rem;
+  }
+
+  .axisColumns {
+    font-size: 0.88rem;
   }
 }

@@ -68,3 +68,25 @@
     }
   }
 }
+
+@include mixins.max-width(tokens.$bp-sm) {
+  .main {
+    gap: 6px;
+  }
+
+  .title {
+    flex-basis: 100%;
+
+    h1 {
+      font-size: 1.35rem;
+    }
+
+    p {
+      display: none;
+    }
+  }
+
+  .tabs {
+    flex-basis: 100%;
+  }
+}

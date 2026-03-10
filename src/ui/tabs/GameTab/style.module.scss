@@ -7,8 +7,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow: hidden;
   width: 100%;
+  overflow: hidden;
 }
 
 .layout {
@@ -21,8 +21,16 @@
   overflow: hidden;
 }
 
+.compactShell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px;
+  overflow: hidden;
+}
+
 .boardSlot {
-  order: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -36,6 +44,80 @@
   flex: 0 0 300px;
 }
 
+.summaryPanel {
+  padding: 8px 10px;
+}
+
+.mobileTray {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  overflow: hidden;
+}
+
+.mobileTrayTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mobileTrayBody {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mobileTrayPane {
+  height: 100%;
+  min-height: 0;
+}
+
+.infoPane {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.infoCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.infoHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.infoRow,
+.infoText,
+.infoHint {
+  margin: 0;
+}
+
+.infoRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: tokens.$color-panel-text;
+}
+
+.infoText {
+  color: tokens.$color-panel-text;
+}
+
+.infoHint {
+  color: tokens.$color-brown-600;
+  font-size: 0.86rem;
+}
+
 @include mixins.max-width(tokens.$bp-lg) {
   .panelSlot {
     flex-basis: 280px;
@@ -47,24 +129,29 @@
     gap: 8px;
   }
 
-  .boardSlot {
-    flex-basis: 100%;
-    min-height: 56%;
-  }
-
-  .panelSlot {
-    flex: 1 1 100%;
-    min-width: 0;
-    min-height: 44%;
+  .compactShell {
+    gap: 8px;
   }
 }
 
 @include mixins.max-width(tokens.$bp-sm) {
-  .boardSlot {
-    min-height: 54%;
+  .root {
+    gap: 6px;
   }
 
-  .panelSlot {
-    min-height: 46%;
+  .summaryPanel {
+    padding: 8px;
+  }
+
+  .mobileTray {
+    gap: 6px;
+  }
+
+  .mobileTrayTabs {
+    gap: 5px;
+  }
+
+  .infoPane {
+    padding-right: 0;
   }
 }

@@ -1,8 +1,17 @@
 @use '../../../styles/tokens' as tokens;
 
 .root {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .turnBanner {
@@ -27,9 +36,15 @@
   }
 }
 
+.metaGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .textRow,
 .textRowInline {
-  margin: 4px 0;
+  margin: 0;
   color: tokens.$color-panel-text;
 }
 
@@ -38,4 +53,12 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.summary[data-compact='true'] {
+  gap: 10px;
+
+  .turnBanner {
+    padding: 10px;
+  }
 }

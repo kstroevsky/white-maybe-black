@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 
 import { getGlossaryEntry } from '@/features/glossary/terms';
 import type { GlossaryTermId } from '@/features/glossary/terms';
+import { useIsMobileViewport } from '@/shared/hooks/useIsMobileViewport';
 import { text } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
 import { Button } from '@/ui/primitives/Button';
@@ -22,7 +23,6 @@ const MOBILE_BREAKPOINT = 720;
 export function GlossaryTooltip({ language, termId }: GlossaryTooltipProps) {
   const id = useId();
   const [open, setOpen] = useState(false);
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [position, setPosition] = useState({
     left: VIEWPORT_PADDING,
     top: VIEWPORT_PADDING,
@@ -32,20 +32,9 @@ export function GlossaryTooltip({ language, termId }: GlossaryTooltipProps) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const popoverRef = useRef<HTMLElement | null>(null);
   const entry = getGlossaryEntry(termId, language);
+  const isMobileViewport = useIsMobileViewport(MOBILE_BREAKPOINT);
   const buttonLabel =
     language === 'russian' ? `Подробнее: ${entry.title}` : `More about ${entry.title}`;
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
-    const syncViewportMode = () => setIsMobileViewport(mediaQuery.matches);
-
-    syncViewportMode();
-    mediaQuery.addEventListener('change', syncViewportMode);
-
-    return () => {
-      mediaQuery.removeEventListener('change', syncViewportMode);
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) {
