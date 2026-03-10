@@ -19,7 +19,7 @@ type ScoreRow = {
 };
 
 export function ScoreCompactTable({ language, scoreSummary }: ScoreCompactTableProps) {
-  const rows: ScoreRow[] = [
+  const metrics: ScoreRow[] = [
     {
       label: text(language, 'scoreHomeSingles'),
       termId: 'homeFieldSingles',
@@ -46,6 +46,17 @@ export function ScoreCompactTable({ language, scoreSummary }: ScoreCompactTableP
     },
   ];
 
+  const playerRows = [
+    {
+      label: text(language, 'scoreWhite'),
+      values: metrics.map((metric) => metric.white),
+    },
+    {
+      label: text(language, 'scoreBlack'),
+      values: metrics.map((metric) => metric.black),
+    },
+  ];
+
   return (
     <div className={styles.root}>
       <div className={styles.header}>
@@ -55,17 +66,23 @@ export function ScoreCompactTable({ language, scoreSummary }: ScoreCompactTableP
       <div className={styles.table} role="table" aria-label={text(language, 'scoreMode')}>
         <div className={styles.row} data-head="true" role="row">
           <span role="columnheader" />
-          <span role="columnheader">{text(language, 'scoreWhite')}</span>
-          <span role="columnheader">{text(language, 'scoreBlack')}</span>
-        </div>
-        {rows.map((row) => (
-          <div key={row.label} className={styles.row} role="row">
-            <div className={styles.label} role="rowheader">
-              <span>{row.label}</span>
-              <GlossaryTooltip language={language} termId={row.termId} />
+          {metrics.map((metric) => (
+            <div key={metric.termId} className={styles.metricHead} role="columnheader">
+              <span>{metric.label}</span>
+              <GlossaryTooltip language={language} termId={metric.termId} />
             </div>
-            <span role="cell">{row.white}</span>
-            <span role="cell">{row.black}</span>
+          ))}
+        </div>
+        {playerRows.map((row) => (
+          <div key={row.label} className={styles.row} role="row">
+            <span className={styles.player} role="rowheader">
+              {row.label}
+            </span>
+            {row.values.map((value, index) => (
+              <span key={`${row.label}-${metrics[index].termId}`} role="cell">
+                {value}
+              </span>
+            ))}
           </div>
         ))}
       </div>

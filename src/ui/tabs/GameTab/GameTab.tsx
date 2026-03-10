@@ -4,17 +4,18 @@ import { useGameStore } from '@/app/providers/GameStoreProvider';
 import type { Coord } from '@/domain';
 import { Board } from '@/ui/board/Board';
 import { GameControlPanel } from '@/ui/panels/GameControlPanel';
-import { MoveInputPanel } from '@/ui/panels/MoveInputPanel';
+import { ScoreCompactTable } from '@/ui/panels/ScoreCompactTable';
 
 import styles from './style.module.scss';
 
 const NO_SELECTABLE_COORDS: Coord[] = [];
 
 export function GameTab() {
-  const { board, language, legalTargets, selectedCell, selectableCoords, onSelectCell } = useGameStore(
+  const { board, language, scoreSummary, legalTargets, selectedCell, selectableCoords, onSelectCell } = useGameStore(
     useShallow((state) => ({
       board: state.gameState.board,
       language: state.preferences.language,
+      scoreSummary: state.scoreSummary,
       legalTargets: state.legalTargets,
       selectedCell: state.selectedCell,
       selectableCoords:
@@ -25,7 +26,7 @@ export function GameTab() {
 
   return (
     <div className={styles.root} role="tabpanel">
-      <MoveInputPanel />
+      {scoreSummary ? <ScoreCompactTable language={language} scoreSummary={scoreSummary} /> : null}
       <div className={styles.layout}>
         <div className={styles.boardSlot}>
           <Board

@@ -18,11 +18,12 @@
 
 .table {
   display: grid;
+  overflow-x: auto;
 }
 
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 50px 50px;
+  grid-template-columns: 64px repeat(4, minmax(84px, 1fr));
   align-items: center;
   gap: 5px;
   padding: 4px 7px;
@@ -38,15 +39,14 @@
     font-weight: 700;
   }
 
-  span:nth-child(2),
-  span:nth-child(3) {
+  span:nth-child(n + 2) {
     text-align: right;
     font-weight: 700;
     color: #2d221a;
   }
 }
 
-.label {
+.metricHead {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -57,6 +57,13 @@
   span {
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.2;
   }
+}
+
+.player {
+  color: #4a392c;
+  font-size: 0.8rem;
+  font-weight: 700;
 }

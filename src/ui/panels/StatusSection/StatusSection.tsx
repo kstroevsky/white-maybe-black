@@ -7,7 +7,7 @@ import { describeInteraction, formatVictory, playerLabel, text } from '@/shared/
 import type { Language } from '@/shared/i18n/types';
 import { Panel } from '@/ui/primitives/Panel';
 import { GlossaryTooltip } from '@/ui/tooltips/GlossaryTooltip';
-import { ScoreCompactTable } from '@/ui/panels/ScoreCompactTable';
+import { MoveInputPanel } from '../MoveInputPanel';
 
 import styles from './style.module.scss';
 
@@ -31,12 +31,11 @@ function getVictoryTermId(victory: Victory): GlossaryTermId | null {
 }
 
 export function StatusSection() {
-  const { currentPlayer, interaction, moveNumber, scoreSummary, selectedCell, victory, language } = useGameStore(
+  const { currentPlayer, interaction, moveNumber, selectedCell, victory, language } = useGameStore(
     useShallow((state) => ({
       currentPlayer: state.gameState.currentPlayer,
       interaction: state.interaction,
       moveNumber: state.gameState.moveNumber,
-      scoreSummary: state.scoreSummary,
       selectedCell: state.selectedCell,
       victory: state.gameState.victory,
       language: state.preferences.language,
@@ -62,7 +61,7 @@ export function StatusSection() {
           <strong>{text(language, 'selectedCellLabel')}:</strong> {selectedCell}
         </p>
       ) : null}
-      {scoreSummary ? <ScoreCompactTable language={language} scoreSummary={scoreSummary} /> : null}
+      <MoveInputPanel />
     </Panel>
   );
 }
