@@ -4,13 +4,12 @@ import { createPortal } from 'react-dom';
 import { getGlossaryEntry } from '@/features/glossary/terms';
 import type { GlossaryTermId } from '@/features/glossary/terms';
 import { useIsMobileViewport } from '@/shared/hooks/useIsMobileViewport';
-import { text } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
-import { Button } from '@/ui/primitives/Button';
 
 import styles from './style.module.scss';
 
 type GlossaryTooltipProps = {
+  compact?: boolean;
   language: Language;
   termId: GlossaryTermId;
 };
@@ -20,7 +19,7 @@ const VIEWPORT_PADDING = 12;
 const TOOLTIP_GAP = 8;
 const MOBILE_BREAKPOINT = 720;
 
-export function GlossaryTooltip({ language, termId }: GlossaryTooltipProps) {
+export function GlossaryTooltip({ compact = false, language, termId }: GlossaryTooltipProps) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({
@@ -165,6 +164,7 @@ export function GlossaryTooltip({ language, termId }: GlossaryTooltipProps) {
       <button
         type="button"
         className={styles.trigger}
+        data-compact={compact || undefined}
         data-open={open || undefined}
         aria-expanded={open}
         aria-controls={`tooltip-${id}`}
@@ -187,9 +187,6 @@ export function GlossaryTooltip({ language, termId }: GlossaryTooltipProps) {
                 >
                   <strong>{entry.title}</strong>
                   <span>{entry.description}</span>
-                  <Button fullWidth onClick={() => setOpen(false)}>
-                    {text(language, 'continue')}
-                  </Button>
                 </div>
               </div>
             ) : (

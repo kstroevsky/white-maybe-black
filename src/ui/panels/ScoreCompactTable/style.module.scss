@@ -17,6 +17,13 @@
   font-size: 0.9rem;
 }
 
+.root[data-layout='compact'] {
+  .header {
+    padding: 4px 6px;
+    font-size: 0.84rem;
+  }
+}
+
 .scrollArea {
   overflow-x: auto;
   overflow-y: visible;
@@ -86,4 +93,43 @@
   color: #2d221a;
   font-weight: 700;
   text-align: center;
+}
+
+.mobileTable {
+  display: grid;
+}
+
+.mobileHead,
+.mobileRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 44px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-top: 1px solid #ece0d2;
+}
+
+.mobileHead {
+  color: #59483a;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.mobilePlayerHead {
+  text-align: center;
+}
+
+.mobileMetric {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #4a392c;
+  font-size: 0.78rem;
+  font-weight: 700;
+
+  > span {
+    min-width: 0;
+    line-height: 1.15;
+  }
 }

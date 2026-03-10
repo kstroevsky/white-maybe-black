@@ -3,8 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { GameStoreProvider } from '@/app/providers/GameStoreProvider';
+import type { GameState, TurnRecord } from '@/domain';
 import { createInitialState } from '@/domain';
-import { createSession, resetFactoryIds } from '@/test/factories';
+import type { SerializableSession } from '@/shared/types/session';
+import { createSession, resetFactoryIds, undoFrame } from '@/test/factories';
 
 import { GameTab } from './GameTab';
 
@@ -25,9 +27,49 @@ function setViewport(width: number, height: number) {
   });
 }
 
-function renderGameTab() {
+function snapshotFromState(state: GameState) {
+  return {
+    board: state.board,
+    currentPlayer: state.currentPlayer,
+    moveNumber: state.moveNumber,
+    status: state.status,
+    victory: state.victory,
+  };
+}
+
+function createHistoryHeavySession(): SerializableSession {
+  const baseState = createInitialState();
+  const snapshot = snapshotFromState(baseState);
+  const turnLog: TurnRecord[] = Array.from({ length: 12 }, (_, index) => ({
+    actor: index % 2 === 0 ? 'white' : 'black',
+    action: {
+      type: 'moveSingleToEmpty',
+      source: 'A1',
+      target: 'A2',
+    },
+    beforeState: snapshot,
+    afterState: snapshot,
+    autoPasses: [],
+    victoryAfter: { type: 'none' },
+    positionHash: `position-${index + 1}`,
+  }));
+  const present = {
+    ...baseState,
+    history: turnLog,
+  };
+
+  return createSession(present, {
+    present: {
+      ...undoFrame(present),
+      historyCursor: turnLog.length,
+    },
+    turnLog,
+  });
+}
+
+function renderGameTab(session = createSession(createInitialState())) {
   return render(
-    <GameStoreProvider initialSession={createSession(createInitialState())}>
+    <GameStoreProvider initialSession={session}>
       <GameTab />
     </GameStoreProvider>,
   );
@@ -59,6 +101,8 @@ describe('GameTab compact layout', () => {
     await user.click(screen.getByRole('tab', { name: 'Инфо' }));
 
     expect(await screen.findByRole('table', { name: 'Подсчёт' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Белые' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Чёрные' })).toBeInTheDocument();
   });
 
   it('shows history controls in the history tray on compact layout', async () => {
@@ -74,5 +118,15 @@ describe('GameTab compact layout', () => {
     expect(await screen.findByRole('heading', { name: 'История' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Вперёд' })).toBeInTheDocument();
+  });
+
+  it('renders the full history list instead of truncating to ten moves', async () => {
+    const user = userEvent.setup();
+    renderGameTab(createHistoryHeavySession());
+
+    await user.click(screen.getByRole('tab', { name: 'История' }));
+
+    expect(screen.getByText('Всего: 12')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(12);
   });
 });

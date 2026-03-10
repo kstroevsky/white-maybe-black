@@ -22,6 +22,12 @@
     border-color: tokens.$color-brown-500;
     background: #e6d7c3;
   }
+
+  &[data-compact='true'] {
+    width: 18px;
+    height: 18px;
+    font-size: 0.72rem;
+  }
 }
 
 .popover {

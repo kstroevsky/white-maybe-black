@@ -22,12 +22,12 @@
 }
 
 .compactShell {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: 100%;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-content: start;
   gap: 8px;
-  overflow: hidden;
 }
 
 .boardSlot {
@@ -49,7 +49,8 @@
 }
 
 .mobileTray {
-  min-height: 0;
+  min-height: 220px;
+  max-height: min(36dvh, 320px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
@@ -129,6 +130,12 @@
     gap: 8px;
   }
 
+  .root[data-layout='compact'] {
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
   .compactShell {
     gap: 8px;
   }
@@ -145,6 +152,8 @@
 
   .mobileTray {
     gap: 6px;
+    min-height: 208px;
+    max-height: min(34dvh, 288px);
   }
 
   .mobileTrayTabs {

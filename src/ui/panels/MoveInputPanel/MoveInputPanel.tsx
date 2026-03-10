@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 
+import { useIsMobileViewport } from '@/shared/hooks/useIsMobileViewport';
 import { useGameStore } from '@/app/providers/GameStoreProvider';
 import { actionLabel, text } from '@/shared/i18n/catalog';
 import { Button } from '@/ui/primitives/Button';
@@ -9,6 +10,7 @@ import { GlossaryTooltip } from '@/ui/tooltips/GlossaryTooltip';
 import styles from './style.module.scss';
 
 export function MoveInputPanel() {
+  const isCompactViewport = useIsMobileViewport(720);
   const {
     availableActionKinds,
     language,
@@ -33,10 +35,10 @@ export function MoveInputPanel() {
       : text(language, 'noActionsSelected');
 
   return (
-    <Panel className={styles.root}>
+    <Panel className={styles.root} data-compact={isCompactViewport || undefined}>
       <div className={styles.titleRow}>
         <strong>{text(language, 'moveInput')}</strong>
-        <Button variant="ghost" onClick={onCancel}>
+        <Button className={styles.clearButton} variant="ghost" onClick={onCancel}>
           {text(language, 'clear')}
         </Button>
       </div>
@@ -45,13 +47,13 @@ export function MoveInputPanel() {
           availableActionKinds.map((actionKind) => (
             <div key={actionKind} className={styles.actionChip}>
               <Button
-                fullWidth
+                className={styles.actionButton}
                 variant={selectedActionType === actionKind ? 'active' : 'solid'}
                 onClick={() => onChooseAction(actionKind)}
               >
                 {actionLabel(language, actionKind)}
               </Button>
-              <GlossaryTooltip language={language} termId={actionKind} />
+              <GlossaryTooltip compact={isCompactViewport} language={language} termId={actionKind} />
             </div>
           ))
         ) : (
@@ -59,7 +61,7 @@ export function MoveInputPanel() {
         )}
       </div>
       <p className={styles.hint}>{hint}</p>
-      {selectedActionType === 'jumpSequence' ? (
+      {selectedActionType === 'jumpSequence' && !isCompactViewport ? (
         <p className={styles.hintSecondary}>{text(language, 'jumpPathHint')}</p>
       ) : null}
     </Panel>

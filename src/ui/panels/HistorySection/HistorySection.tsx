@@ -10,6 +10,10 @@ import styles from './style.module.scss';
 
 type HistoryState = 'current' | 'future' | 'past';
 
+function historyCountLabel(language: 'english' | 'russian', count: number): string {
+  return language === 'russian' ? `Всего: ${count}` : `Total: ${count}`;
+}
+
 export function HistorySection() {
   const { canRedo, canUndo, historyCursor, language, onGoToHistoryCursor, onRedo, onUndo, turnLog } = useGameStore(
     useShallow((state) => ({
@@ -24,16 +28,13 @@ export function HistorySection() {
     })),
   );
   const deferredTurnLog = useDeferredValue(turnLog);
-  const historyEntries = deferredTurnLog
-    .map((record, index) => ({ record, index }))
-    .reverse()
-    .slice(0, 10);
+  const historyEntries = deferredTurnLog.map((record, index) => ({ record, index })).reverse();
 
   return (
     <Panel className={styles.root}>
       <div className={styles.header}>
         <h2>{text(language, 'history')}</h2>
-        <small>{text(language, 'historyLastTen')}</small>
+        <small>{historyCountLabel(language, deferredTurnLog.length)}</small>
       </div>
       <ol className={styles.list}>
         {historyEntries.map(({ record, index }) => {

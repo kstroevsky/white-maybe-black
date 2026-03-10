@@ -15,6 +15,10 @@
   gap: 8px;
 }
 
+.clearButton {
+  flex: 0 0 auto;
+}
+
 .actionGrid {
   display: flex;
   flex-wrap: wrap;
@@ -26,12 +30,16 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex: 1 1 148px;
 }
 
 .empty {
   color: tokens.$color-brown-600;
   font-size: 0.9rem;
+}
+
+.actionButton {
+  white-space: normal;
+  line-height: 1.15;
 }
 
 .hint,
@@ -52,10 +60,56 @@
   .actionChip {
     flex-basis: calc(50% - 3px);
   }
+
+  .actionButton {
+        width: 100%;
+
+  }
 }
 
 @include mixins.max-width(tokens.$bp-sm) {
+  .root[data-compact='true'] {
+    gap: 5px;
+    padding: 6px 8px;
+  }
+
+  .titleRow {
+    gap: 6px;
+
+    strong {
+      font-size: 0.98rem;
+    }
+  }
+
+  .clearButton {
+    padding: 5px 9px;
+    border-radius: tokens.$radius-sm;
+    font-size: 0.84rem;
+  }
+
+  .actionGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
   .actionChip {
-    flex-basis: 100%;
+    gap: 4px;
+    flex: none;
+    min-width: 0;
+  }
+
+  .actionButton {
+    min-height: 40px;
+    padding: 6px 8px;
+    border-radius: tokens.$radius-sm;
+    font-size: 0.8rem;
+  }
+
+  .empty,
+  .hint,
+  .hintSecondary {
+    font-size: 0.76rem;
+    line-height: 1.2;
   }
 }

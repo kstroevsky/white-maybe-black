@@ -23,7 +23,7 @@ export function GameInfoPane() {
   return (
     <div className={styles.infoPane}>
       {scoreSummary ? (
-        <ScoreCompactTable language={language} scoreSummary={scoreSummary} />
+        <ScoreCompactTable compact language={language} scoreSummary={scoreSummary} />
       ) : (
         <Panel className={styles.infoCard}>
           <div className={styles.infoHeading}>
