@@ -1,10 +1,9 @@
 import { useShallow } from 'zustand/react/shallow';
 
-import type { GameState, Victory } from '@/domain';
+import type { Victory } from '@/domain';
 import { useGameStore } from '@/app/providers/GameStoreProvider';
 import type { GlossaryTermId } from '@/features/glossary/terms';
-import { describeInteraction, formatVictory, playerLabel, text } from '@/shared/i18n/catalog';
-import type { Language } from '@/shared/i18n/types';
+import { describeInteraction, formatTurnBanner, formatVictory, playerLabel, text } from '@/shared/i18n/catalog';
 import { Button } from '@/ui/primitives/Button';
 import { GlossaryTooltip } from '@/ui/tooltips/GlossaryTooltip';
 
@@ -14,13 +13,10 @@ type TurnSummaryStripProps = {
   compact?: boolean;
 };
 
-function getTurnLabel(language: Language, currentPlayer: GameState['currentPlayer']): string {
-  return language === 'russian'
-    ? `${playerLabel(language, currentPlayer)} ходят`
-    : `${playerLabel(language, currentPlayer)} turn`;
-}
-
-function getDifficultyLabel(language: Language, difficulty: 'easy' | 'medium' | 'hard'): string {
+function getDifficultyLabel(
+  language: 'english' | 'russian',
+  difficulty: 'easy' | 'medium' | 'hard',
+): string {
   switch (difficulty) {
     case 'easy':
       return text(language, 'difficultyEasy');
@@ -85,7 +81,7 @@ export function TurnSummaryStrip({ compact = false }: TurnSummaryStripProps) {
   return (
     <div className={styles.summary} data-compact={compact || undefined}>
       <div className={styles.turnBanner}>
-        <p>{getTurnLabel(language, currentPlayer)}</p>
+        <p>{formatTurnBanner(language, currentPlayer)}</p>
         <small>{interactionCopy}</small>
       </div>
 

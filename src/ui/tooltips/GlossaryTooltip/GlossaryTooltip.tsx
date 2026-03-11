@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { getGlossaryEntry } from '@/features/glossary/terms';
 import type { GlossaryTermId } from '@/features/glossary/terms';
 import { useIsMobileViewport } from '@/shared/hooks/useIsMobileViewport';
+import { formatGlossaryTooltipLabel } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
 
 import styles from './style.module.scss';
@@ -32,8 +33,7 @@ export function GlossaryTooltip({ compact = false, language, termId }: GlossaryT
   const popoverRef = useRef<HTMLElement | null>(null);
   const entry = getGlossaryEntry(termId, language);
   const isMobileViewport = useIsMobileViewport(MOBILE_BREAKPOINT);
-  const buttonLabel =
-    language === 'russian' ? `Подробнее: ${entry.title}` : `More about ${entry.title}`;
+  const buttonLabel = formatGlossaryTooltipLabel(language, entry.title);
 
   useEffect(() => {
     if (!open) {

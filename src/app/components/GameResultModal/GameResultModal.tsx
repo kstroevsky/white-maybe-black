@@ -2,8 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useGameStore } from '@/app/providers/GameStoreProvider';
-import { formatVictory, playerLabel, text } from '@/shared/i18n/catalog';
-import type { Language } from '@/shared/i18n/types';
+import { formatGameResultTitle, formatVictory, text } from '@/shared/i18n/catalog';
 import { Button } from '@/ui/primitives/Button';
 
 import styles from './style.module.scss';
@@ -25,21 +24,6 @@ function getResultToken(
   const winner = 'winner' in victory ? victory.winner : 'draw';
 
   return `${historyCursor}:${victory.type}:${winner}`;
-}
-
-function getResultTitle(language: Language, victory: Parameters<typeof getResultToken>[2]): string {
-  switch (victory.type) {
-    case 'homeField':
-    case 'sixStacks':
-      return language === 'russian'
-        ? `${playerLabel(language, victory.winner)} победили`
-        : `${playerLabel(language, victory.winner)} win`;
-    case 'threefoldDraw':
-    case 'stalemateDraw':
-      return language === 'russian' ? 'Ничья' : 'Draw';
-    case 'none':
-      return language === 'russian' ? 'Игра окончена' : 'Game over';
-  }
 }
 
 export function GameResultModal() {
@@ -91,7 +75,7 @@ export function GameResultModal() {
         onClick={(event) => event.stopPropagation()}
       >
         <p className={styles.kicker}>{text(language, 'gameResult')}</p>
-        <h2 id={titleId}>{getResultTitle(language, victory)}</h2>
+        <h2 id={titleId}>{formatGameResultTitle(language, victory)}</h2>
         <p id={descriptionId} className={styles.summary}>
           {formatVictory(language, victory)}
         </p>

@@ -2,7 +2,7 @@ import { startTransition, useDeferredValue } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useGameStore } from '@/app/providers/GameStoreProvider';
-import { formatTurnRecord, text } from '@/shared/i18n/catalog';
+import { formatHistorySummary, formatTurnRecord, text } from '@/shared/i18n/catalog';
 import { MatchSetupPanel } from '@/ui/panels/MatchSetupPanel';
 import { Button } from '@/ui/primitives/Button';
 import { Panel } from '@/ui/primitives/Panel';
@@ -10,12 +10,6 @@ import { Panel } from '@/ui/primitives/Panel';
 import styles from './style.module.scss';
 
 type HistoryState = 'current' | 'future' | 'past';
-
-function historySummaryLabel(language: 'english' | 'russian', count: number, cursor: number): string {
-  return language === 'russian'
-    ? `Всего: ${count} · Позиция истории: ${cursor}`
-    : `Total: ${count} · History cursor: ${cursor}`;
-}
 
 export function HistorySection() {
   const { canRedo, canUndo, historyCursor, language, onGoToHistoryCursor, onRedo, onUndo, turnLog } = useGameStore(
@@ -45,7 +39,7 @@ export function HistorySection() {
             {text(language, 'redo')}
           </Button>
         </div>
-        <small>{historySummaryLabel(language, deferredTurnLog.length, historyCursor)}</small>
+        <small>{formatHistorySummary(language, deferredTurnLog.length, historyCursor)}</small>
       </div>
       <ol className={styles.list}>
         {historyEntries.map(({ record, index }) => {

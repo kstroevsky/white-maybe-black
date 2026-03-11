@@ -171,6 +171,143 @@ const TEXT = {
 
 export type TextKey = keyof (typeof TEXT)['english'];
 
+const PLAYER_LABELS: Record<Language, Record<Player, string>> = {
+  english: {
+    white: 'White',
+    black: 'Black',
+  },
+  russian: {
+    white: 'Белые',
+    black: 'Чёрные',
+  },
+};
+
+const ACTION_LABELS: Record<Language, Record<ActionKind, string>> = {
+  english: {
+    jumpSequence: 'Jump',
+    manualUnfreeze: 'Unfreeze',
+    climbOne: 'Climb',
+    moveSingleToEmpty: 'Step to empty',
+    splitOneFromStack: 'Split 1',
+    splitTwoFromStack: 'Split 2',
+    friendlyStackTransfer: 'Friendly transfer',
+  },
+  russian: {
+    jumpSequence: 'Прыжок',
+    manualUnfreeze: 'Разморозка',
+    climbOne: 'Восхождение',
+    moveSingleToEmpty: 'Шаг на пустую',
+    splitOneFromStack: 'Сход 1',
+    splitTwoFromStack: 'Сход 2',
+    friendlyStackTransfer: 'Перенос к своей',
+  },
+};
+
+type InteractionCopy = {
+  idle: string;
+  pieceSelected: (source: string) => string;
+  actionTypeSelected: (actionLabel: string) => string;
+  choosingTarget: (actionLabel: string, source: string) => string;
+  buildingJumpChain: (source: string) => string;
+  turnResolved: (nextPlayerLabel: string) => string;
+  passingDevice: (nextPlayerLabel: string) => string;
+  gameOver: string;
+};
+
+const INTERACTION_COPY: Record<Language, InteractionCopy> = {
+  english: {
+    idle: 'Select a checker or controlled stack.',
+    pieceSelected: (source) => `Selected ${source}. Choose a move type.`,
+    actionTypeSelected: (action) => `Action ${action} is selected.`,
+    choosingTarget: (action, source) => `Choose a target for ${action} from ${source}.`,
+    buildingJumpChain: (source) =>
+      `Choose the next jump landing from ${source}. Each click applies one segment immediately.`,
+    turnResolved: (nextPlayer) => `Turn resolved. ${nextPlayer} is next.`,
+    passingDevice: (nextPlayer) => `Pass the device to ${nextPlayer}.`,
+    gameOver: 'Game over.',
+  },
+  russian: {
+    idle: 'Выберите шашку или контролируемую горку.',
+    pieceSelected: (source) => `Выбрана ${source}. Теперь выберите тип хода.`,
+    actionTypeSelected: (action) => `Выбрано действие «${action}».`,
+    choosingTarget: (action, source) => `Выберите цель для «${action}» из ${source}.`,
+    buildingJumpChain: (source) =>
+      `Выберите следующую цель прыжка из ${source}. Каждый клик применяет один участок сразу.`,
+    turnResolved: (nextPlayer) => `Ход завершён. Дальше ходят ${nextPlayer.toLowerCase()}.`,
+    passingDevice: (nextPlayer) => `Передайте устройство: ходят ${nextPlayer.toLowerCase()}.`,
+    gameOver: 'Игра окончена.',
+  },
+};
+
+type VictoryCopy = {
+  none: string;
+  homeField: (winner: string) => string;
+  sixStacks: (winner: string) => string;
+  threefoldDraw: string;
+  stalemateDraw: string;
+};
+
+const VICTORY_COPY: Record<Language, VictoryCopy> = {
+  english: {
+    none: TEXT.english.gameActive,
+    homeField: (winner) => `${winner} win by home field`,
+    sixStacks: (winner) => `${winner} win by six stacks`,
+    threefoldDraw: 'Draw by threefold repetition',
+    stalemateDraw: 'Draw by stalemate',
+  },
+  russian: {
+    none: TEXT.russian.gameActive,
+    homeField: (winner) => `${winner} победили через своё поле`,
+    sixStacks: (winner) => `${winner} победили шестью горками`,
+    threefoldDraw: 'Ничья по трёхкратному повторению',
+    stalemateDraw: 'Ничья по блокировке',
+  },
+};
+
+type ResultTitleCopy = {
+  winner: (winner: string) => string;
+  draw: string;
+  gameOver: string;
+};
+
+const RESULT_TITLE_COPY: Record<Language, ResultTitleCopy> = {
+  english: {
+    winner: (winner) => `${winner} win`,
+    draw: 'Draw',
+    gameOver: 'Game over',
+  },
+  russian: {
+    winner: (winner) => `${winner} победили`,
+    draw: 'Ничья',
+    gameOver: 'Игра окончена',
+  },
+};
+
+type MiscCopy = {
+  turnBanner: (player: string) => string;
+  passOverlayLabel: (player: string) => string;
+  historySummary: (count: number, cursor: number) => string;
+  tooltipMoreAbout: (title: string) => string;
+  autoPassPrefix: string;
+};
+
+const MISC_COPY: Record<Language, MiscCopy> = {
+  english: {
+    turnBanner: (player) => `${player} turn`,
+    passOverlayLabel: (player) => `Pass the device to ${player}.`,
+    historySummary: (count, cursor) => `Total: ${count} · History cursor: ${cursor}`,
+    tooltipMoreAbout: (title) => `More about ${title}`,
+    autoPassPrefix: ' | auto-pass: ',
+  },
+  russian: {
+    turnBanner: (player) => `${player} ходят`,
+    passOverlayLabel: (player) => `Передайте устройство: ${player.toLowerCase()}.`,
+    historySummary: (count, cursor) => `Всего: ${count} · Позиция истории: ${cursor}`,
+    tooltipMoreAbout: (title) => `Подробнее: ${title}`,
+    autoPassPrefix: ' | автопас: ',
+  },
+};
+
 /** Returns localized static UI text by language and key. */
 export function text(language: Language, key: TextKey): string {
   return TEXT[language][key];
@@ -178,66 +315,71 @@ export function text(language: Language, key: TextKey): string {
 
 /** Returns localized player label. */
 export function playerLabel(language: Language, player: Player): string {
-  if (language === 'russian') {
-    return player === 'white' ? 'Белые' : 'Чёрные';
-  }
-
-  return player === 'white' ? 'White' : 'Black';
+  return PLAYER_LABELS[language][player];
 }
 
 /** Returns localized action label used in buttons and history summaries. */
 export function actionLabel(language: Language, actionKind: ActionKind): string {
-  switch (actionKind) {
-    case 'jumpSequence':
-      return language === 'russian' ? 'Прыжок' : 'Jump';
-    case 'manualUnfreeze':
-      return language === 'russian' ? 'Разморозка' : 'Unfreeze';
-    case 'climbOne':
-      return language === 'russian' ? 'Восхождение' : 'Climb';
-    case 'moveSingleToEmpty':
-      return language === 'russian' ? 'Шаг на пустую' : 'Step to empty';
-    case 'splitOneFromStack':
-      return language === 'russian' ? 'Сход 1' : 'Split 1';
-    case 'splitTwoFromStack':
-      return language === 'russian' ? 'Сход 2' : 'Split 2';
-    case 'friendlyStackTransfer':
-      return language === 'russian' ? 'Перенос к своей' : 'Friendly transfer';
+  return ACTION_LABELS[language][actionKind];
+}
+
+/** Returns localized turn banner text for current actor. */
+export function formatTurnBanner(language: Language, player: Player): string {
+  return MISC_COPY[language].turnBanner(playerLabel(language, player));
+}
+
+/** Returns localized pass-device helper copy. */
+export function formatPassOverlayLabel(language: Language, player: Player): string {
+  return MISC_COPY[language].passOverlayLabel(playerLabel(language, player));
+}
+
+/** Returns localized compact history summary. */
+export function formatHistorySummary(language: Language, count: number, cursor: number): string {
+  return MISC_COPY[language].historySummary(count, cursor);
+}
+
+/** Returns localized glossary tooltip trigger aria-label. */
+export function formatGlossaryTooltipLabel(language: Language, title: string): string {
+  return MISC_COPY[language].tooltipMoreAbout(title);
+}
+
+/** Returns localized title used in game result modal. */
+export function formatGameResultTitle(language: Language, victory: Victory): string {
+  const copy = RESULT_TITLE_COPY[language];
+
+  switch (victory.type) {
+    case 'homeField':
+    case 'sixStacks':
+      return copy.winner(playerLabel(language, victory.winner));
+    case 'threefoldDraw':
+    case 'stalemateDraw':
+      return copy.draw;
+    case 'none':
+      return copy.gameOver;
   }
 }
 
 /** Returns localized status line for current interaction state machine node. */
 export function describeInteraction(language: Language, interaction: InteractionState): string {
+  const copy = INTERACTION_COPY[language];
+
   switch (interaction.type) {
     case 'idle':
-      return language === 'russian'
-        ? 'Выберите шашку или контролируемую горку.'
-        : 'Select a checker or controlled stack.';
+      return copy.idle;
     case 'pieceSelected':
-      return language === 'russian'
-        ? `Выбрана ${interaction.source}. Теперь выберите тип хода.`
-        : `Selected ${interaction.source}. Choose a move type.`;
+      return copy.pieceSelected(interaction.source);
     case 'actionTypeSelected':
-      return language === 'russian'
-        ? `Выбрано действие «${actionLabel(language, interaction.actionType)}».`
-        : `Action ${actionLabel(language, interaction.actionType)} is selected.`;
+      return copy.actionTypeSelected(actionLabel(language, interaction.actionType));
     case 'choosingTarget':
-      return language === 'russian'
-        ? `Выберите цель для «${actionLabel(language, interaction.actionType)}» из ${interaction.source}.`
-        : `Choose a target for ${actionLabel(language, interaction.actionType)} from ${interaction.source}.`;
+      return copy.choosingTarget(actionLabel(language, interaction.actionType), interaction.source);
     case 'buildingJumpChain':
-      return language === 'russian'
-        ? `Выберите следующую цель прыжка из ${interaction.source}. Каждый клик применяет один участок сразу.`
-        : `Choose the next jump landing from ${interaction.source}. Each click applies one segment immediately.`;
+      return copy.buildingJumpChain(interaction.source);
     case 'turnResolved':
-      return language === 'russian'
-        ? `Ход завершён. Дальше ходят ${playerLabel(language, interaction.nextPlayer).toLowerCase()}.`
-        : `Turn resolved. ${playerLabel(language, interaction.nextPlayer)} is next.`;
+      return copy.turnResolved(playerLabel(language, interaction.nextPlayer));
     case 'passingDevice':
-      return language === 'russian'
-        ? `Передайте устройство: ходят ${playerLabel(language, interaction.nextPlayer).toLowerCase()}.`
-        : `Pass the device to ${playerLabel(language, interaction.nextPlayer)}.`;
+      return copy.passingDevice(playerLabel(language, interaction.nextPlayer));
     case 'gameOver':
-      return language === 'russian' ? 'Игра окончена.' : 'Game over.';
+      return copy.gameOver;
   }
 }
 
@@ -245,9 +387,7 @@ export function describeInteraction(language: Language, interaction: Interaction
 export function formatAction(language: Language, action: TurnAction): string {
   switch (action.type) {
     case 'manualUnfreeze':
-      return language === 'russian'
-        ? `Разморозка ${action.coord}`
-        : `Unfreeze ${action.coord}`;
+      return `${actionLabel(language, action.type)} ${action.coord}`;
     case 'jumpSequence':
       return `${actionLabel(language, action.type)} ${action.source} -> ${action.path.join(' -> ')}`;
     case 'climbOne':
@@ -261,25 +401,19 @@ export function formatAction(language: Language, action: TurnAction): string {
 
 /** Formats current victory status into localized short text. */
 export function formatVictory(language: Language, victory: Victory): string {
+  const copy = VICTORY_COPY[language];
+
   switch (victory.type) {
     case 'none':
-      return text(language, 'gameActive');
+      return copy.none;
     case 'homeField':
-      return language === 'russian'
-        ? `${playerLabel(language, victory.winner)} победили через своё поле`
-        : `${playerLabel(language, victory.winner)} win by home field`;
+      return copy.homeField(playerLabel(language, victory.winner));
     case 'sixStacks':
-      return language === 'russian'
-        ? `${playerLabel(language, victory.winner)} победили шестью горками`
-        : `${playerLabel(language, victory.winner)} win by six stacks`;
+      return copy.sixStacks(playerLabel(language, victory.winner));
     case 'threefoldDraw':
-      return language === 'russian'
-        ? 'Ничья по трёхкратному повторению'
-        : 'Draw by threefold repetition';
+      return copy.threefoldDraw;
     case 'stalemateDraw':
-      return language === 'russian'
-        ? 'Ничья по блокировке'
-        : 'Draw by stalemate';
+      return copy.stalemateDraw;
   }
 }
 
@@ -287,9 +421,7 @@ export function formatVictory(language: Language, victory: Victory): string {
 export function formatTurnRecord(language: Language, record: TurnRecord): string {
   const actor = playerLabel(language, record.actor);
   const autoPasses = record.autoPasses.length
-    ? language === 'russian'
-      ? ` | автопас: ${record.autoPasses.map((player) => playerLabel(language, player)).join(', ')}`
-      : ` | auto-pass: ${record.autoPasses.map((player) => playerLabel(language, player)).join(', ')}`
+    ? `${MISC_COPY[language].autoPassPrefix}${record.autoPasses.map((player) => playerLabel(language, player)).join(', ')}`
     : '';
 
   return `${actor}: ${formatAction(language, record.action)}${autoPasses}`;
