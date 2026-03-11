@@ -9,7 +9,7 @@ import {
   isStack,
 } from '@/domain/model/board';
 import { allCoords, isAdjacent } from '@/domain/model/coordinates';
-import type { Board, Coord, GameState, Player, ValidationResult } from '@/domain/model/types';
+import type { Board, Coord, EngineState, Player, ValidationResult } from '@/domain/model/types';
 
 /** True when the cell contains exactly one frozen checker. */
 export function isFrozenSingle(board: Board, coord: Coord): boolean {
@@ -97,7 +97,7 @@ export function validateBoard(board: Board): ValidationResult {
 }
 
 /** Validates board invariants and fixed total checker counts for both players. */
-export function validateGameState(state: GameState): ValidationResult {
+export function validateGameState(state: EngineState): ValidationResult {
   const boardValidation = validateBoard(state.board);
 
   if (!boardValidation.valid) {
@@ -110,6 +110,25 @@ export function validateGameState(state: GameState): ValidationResult {
 
   if (countCheckersForPlayer(state.board, 'black') !== 18) {
     return { valid: false, reason: 'Black must have exactly 18 checkers.' };
+  }
+
+  if (state.pendingJump) {
+    const sourceChecker = getTopChecker(state.board, state.pendingJump.source);
+
+    if (!sourceChecker) {
+      return { valid: false, reason: `Pending jump source ${state.pendingJump.source} is empty.` };
+    }
+
+    if (sourceChecker.owner !== state.currentPlayer) {
+      return {
+        valid: false,
+        reason: `Pending jump source ${state.pendingJump.source} is not controlled by ${state.currentPlayer}.`,
+      };
+    }
+
+    if (!state.pendingJump.visitedStateKeys.length) {
+      return { valid: false, reason: 'Pending jump must track at least one visited state.' };
+    }
   }
 
   return { valid: true };

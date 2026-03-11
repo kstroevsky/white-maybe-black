@@ -144,5 +144,6 @@ export function createSnapshot(state: GameState): StateSnapshot {
     moveNumber: state.moveNumber,
     status: state.status,
     victory: structuredClone(state.victory),
+    pendingJump: structuredClone(state.pendingJump),
   };
 }

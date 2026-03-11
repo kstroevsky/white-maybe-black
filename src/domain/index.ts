@@ -1,6 +1,7 @@
 export { createInitialBoard, createInitialState } from '@/domain/generators/createInitialState';
+export { hashPosition } from '@/domain/model/hash';
 export { RULE_DEFAULTS, RULE_TOGGLE_DESCRIPTORS, withRuleDefaults } from '@/domain/model/ruleConfig';
-export { applyAction } from '@/domain/reducers/gameReducer';
+export { advanceEngineState, applyAction } from '@/domain/reducers/gameReducer';
 export { getScoreSummary } from '@/domain/rules/scoring';
 export {
   createUndoFrame,
@@ -9,8 +10,10 @@ export {
   serializeSession,
 } from '@/domain/serialization/session';
 export {
+  applyValidatedAction,
   applyActionToBoard,
   buildTargetMap,
+  createJumpStateKey,
   createEmptyTargetMap,
   getJumpContinuationTargets,
   getLegalActions,
@@ -26,9 +29,11 @@ export type {
   Cell,
   Checker,
   Coord,
+  EngineState,
   FriendlyStackTransferAction,
   GameState,
   MoveSingleToEmptyAction,
+  PendingJump,
   Player,
   RuleConfig,
   ScoreSummary,

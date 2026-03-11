@@ -1,7 +1,7 @@
 import { getCellHeight, getController, getTopChecker, isSingleChecker, isStack } from '@/domain/model/board';
 import { FRONT_HOME_ROW, HOME_ROWS } from '@/domain/model/constants';
 import { allCoords, parseCoord } from '@/domain/model/coordinates';
-import type { GameState, Player, ScoreSummary } from '@/domain/model/types';
+import type { EngineState, Player, ScoreSummary } from '@/domain/model/types';
 
 /** Creates zeroed score counters for optional informational score mode. */
 function createScoreSeed(): ScoreSummary {
@@ -14,7 +14,7 @@ function createScoreSeed(): ScoreSummary {
 }
 
 /** Computes read-only score metrics without affecting legality or victory. */
-export function getScoreSummary(state: GameState): ScoreSummary {
+export function getScoreSummary(state: EngineState): ScoreSummary {
   const summary = createScoreSeed();
 
   for (const coord of allCoords()) {

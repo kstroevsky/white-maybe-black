@@ -7,6 +7,7 @@ import type {
   Checker,
   Coord,
   GameState,
+  PendingJump,
   Player,
   RuleConfig,
   StateSnapshot,
@@ -15,11 +16,14 @@ import type {
   Victory,
 } from '@/domain/model/types';
 import { validateGameState } from '@/domain/validators/stateValidators';
+import { DEFAULT_MATCH_SETTINGS } from '@/shared/constants/match';
 import type {
   AppPreferences,
+  MatchSettings,
   DeserializedSession,
   SerializableSession,
   SerializableSessionV1,
+  SerializableSessionV2,
   UndoFrame,
 } from '@/shared/types/session';
 import { isRecord } from '@/shared/utils/collections';
@@ -64,6 +68,23 @@ function assertCoord(value: unknown, label: string): Coord {
   }
 
   return value as Coord;
+}
+
+/** Runtime guard for encoded forced jump continuation state. */
+function assertPendingJump(value: unknown): PendingJump | null {
+  if (value == null) {
+    return null;
+  }
+
+  if (!isRecord(value) || !Array.isArray(value.visitedStateKeys)) {
+    throw new Error('Invalid pending jump state.');
+  }
+
+  return {
+    source: assertCoord(value.source, 'pendingJump.source'),
+    visitedStateKeys: value.visitedStateKeys
+      .filter((entry): entry is string => typeof entry === 'string'),
+  };
 }
 
 /** Runtime guard and normalizer for persisted victory payloads. */
@@ -134,6 +155,28 @@ function assertPreferences(value: unknown): AppPreferences {
         : legacyLanguageMode === 'english'
           ? 'english'
           : 'russian',
+  };
+}
+
+/** Runtime guard for persisted match settings with defaults for legacy sessions. */
+function assertMatchSettings(value: unknown): MatchSettings {
+  if (!isRecord(value)) {
+    return DEFAULT_MATCH_SETTINGS;
+  }
+
+  return {
+    opponentMode:
+      value.opponentMode === 'computer' || value.opponentMode === 'hotSeat'
+        ? value.opponentMode
+        : DEFAULT_MATCH_SETTINGS.opponentMode,
+    humanPlayer:
+      value.humanPlayer === 'white' || value.humanPlayer === 'black'
+        ? value.humanPlayer
+        : DEFAULT_MATCH_SETTINGS.humanPlayer,
+    aiDifficulty:
+      value.aiDifficulty === 'easy' || value.aiDifficulty === 'medium' || value.aiDifficulty === 'hard'
+        ? value.aiDifficulty
+        : DEFAULT_MATCH_SETTINGS.aiDifficulty,
   };
 }
 
@@ -225,6 +268,7 @@ function assertStateSnapshot(value: unknown): StateSnapshot {
         : 1,
     status: value.status === 'active' || value.status === 'gameOver' ? value.status : 'active',
     victory: assertVictory(value.victory),
+    pendingJump: assertPendingJump(value.pendingJump),
   };
 }
 
@@ -262,7 +306,7 @@ function assertPositionCounts(value: unknown): Record<string, number> {
 /** Increments a repetition counter entry for board+side-to-move state. */
 function incrementPositionCount(
   counts: Record<string, number>,
-  state: Pick<StateSnapshot, 'board' | 'currentPlayer'>,
+  state: Pick<StateSnapshot, 'board' | 'currentPlayer' | 'pendingJump'>,
 ): void {
   const positionHash = hashPosition(state);
   counts[positionHash] = (counts[positionHash] ?? 0) + 1;
@@ -385,18 +429,25 @@ function getCanonicalTurnLog(states: GameState[]): TurnRecord[] {
   return normalizeTurnLog(longestState?.history ?? []);
 }
 
-/** Converts legacy v1 session payloads into v2 storage shape. */
-function migrateSession(session: SerializableSessionV1): SerializableSession {
-  const turnLog = getCanonicalTurnLog([session.present, ...session.past, ...session.future]);
+/** Converts legacy session payloads into the v3 storage shape. */
+function migrateSession(session: SerializableSessionV1 | SerializableSessionV2): SerializableSession {
+  const turnLog =
+    session.version === 1
+      ? getCanonicalTurnLog([session.present, ...session.past, ...session.future])
+      : session.turnLog;
+  const present = session.version === 1 ? createUndoFrame(session.present) : session.present;
+  const past = session.version === 1 ? session.past.map(createUndoFrame) : session.past;
+  const future = session.version === 1 ? session.future.map(createUndoFrame) : session.future;
 
   return {
-    version: 2,
+    version: 3,
     ruleConfig: session.ruleConfig,
     preferences: session.preferences,
+    matchSettings: DEFAULT_MATCH_SETTINGS,
     turnLog,
-    present: createUndoFrame(session.present),
-    past: session.past.map(createUndoFrame),
-    future: session.future.map(createUndoFrame),
+    present,
+    past,
+    future,
   };
 }
 
@@ -417,7 +468,7 @@ function assertLegacySession(value: unknown): SerializableSessionV1 {
 }
 
 /** Runtime guard for full v2 session payload. */
-function assertSession(value: unknown): SerializableSession {
+function assertSessionV2(value: unknown): SerializableSessionV2 {
   if (!isRecord(value) || value.version !== 2) {
     throw new Error('Unsupported session payload.');
   }
@@ -440,6 +491,31 @@ function assertSession(value: unknown): SerializableSession {
   };
 }
 
+/** Runtime guard for full v3 session payload. */
+function assertSessionV3(value: unknown): SerializableSession {
+  if (!isRecord(value) || value.version !== 3) {
+    throw new Error('Unsupported session payload.');
+  }
+
+  const turnLog = assertTurnLog(value.turnLog);
+  const present = assertValidFrame(assertUndoFrame(value.present, turnLog.length), turnLog);
+
+  if (!Array.isArray(value.past) || !Array.isArray(value.future)) {
+    throw new Error('Invalid session history frames.');
+  }
+
+  return {
+    version: 3,
+    ruleConfig: assertRuleConfig(value.ruleConfig),
+    preferences: assertPreferences(value.preferences),
+    matchSettings: assertMatchSettings(value.matchSettings),
+    turnLog,
+    present,
+    past: value.past.map((entry) => assertValidFrame(assertUndoFrame(entry, turnLog.length), turnLog)),
+    future: value.future.map((entry) => assertValidFrame(assertUndoFrame(entry, turnLog.length), turnLog)),
+  };
+}
+
 /** Serializes full session payload for local persistence and export. */
 export function serializeSession(
   session: SerializableSession,
@@ -448,13 +524,15 @@ export function serializeSession(
   return JSON.stringify(session, null, options.pretty ? 2 : undefined);
 }
 
-/** Deserializes session JSON and normalizes every payload to the v2 session shape. */
+/** Deserializes session JSON and normalizes every payload to the v3 session shape. */
 export function deserializeSession(serialized: string): SerializableSession {
   const parsed = JSON.parse(serialized) as unknown;
   const session: DeserializedSession =
     isRecord(parsed) && parsed.version === 1
       ? assertLegacySession(parsed)
-      : assertSession(parsed);
+      : isRecord(parsed) && parsed.version === 2
+        ? assertSessionV2(parsed)
+        : assertSessionV3(parsed);
 
-  return session.version === 1 ? migrateSession(session) : session;
+  return session.version === 3 ? session : migrateSession(session);
 }

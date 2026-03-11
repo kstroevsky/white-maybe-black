@@ -8,7 +8,7 @@ import { BOARD_COLUMNS, FRONT_HOME_ROW, HOME_ROWS } from '@/domain/model/constan
 import { allCoords, createCoord, parseCoord } from '@/domain/model/coordinates';
 import { hashPosition } from '@/domain/model/hash';
 import { withRuleDefaults } from '@/domain/model/ruleConfig';
-import type { Column, Coord, GameState, Player, RuleConfig, Victory } from '@/domain/model/types';
+import type { Column, Coord, EngineState, Player, RuleConfig, Victory } from '@/domain/model/types';
 
 const FRONT_HOME_COORDS: Record<Player, Coord[]> = {
   white: BOARD_COLUMNS.map((column) => createCoord(column as Column, FRONT_HOME_ROW.white)),
@@ -16,7 +16,7 @@ const FRONT_HOME_COORDS: Record<Player, Coord[]> = {
 };
 
 /** True when all 18 player checkers are singles inside that player's home rows. */
-function hasHomeFieldWin(state: GameState, player: Player): boolean {
+function hasHomeFieldWin(state: EngineState, player: Player): boolean {
   if (countCheckersForPlayer(state.board, player) !== 18) {
     return false;
   }
@@ -34,7 +34,7 @@ function hasHomeFieldWin(state: GameState, player: Player): boolean {
 }
 
 /** True when six front-row stacks are full height and contain only the player's own checkers. */
-function hasSixStackWin(state: GameState, player: Player): boolean {
+function hasSixStackWin(state: EngineState, player: Player): boolean {
   return FRONT_HOME_COORDS[player].every((coord) =>
     isFullStackOwnedByPlayer(state.board, coord, player),
   );
@@ -42,7 +42,7 @@ function hasSixStackWin(state: GameState, player: Player): boolean {
 
 /** Evaluates deterministic terminal status for current state under provided rules. */
 export function checkVictory(
-  state: GameState,
+  state: EngineState,
   config: Partial<RuleConfig> = {},
 ): Victory {
   const resolvedConfig = withRuleDefaults(config);

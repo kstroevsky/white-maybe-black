@@ -1,6 +1,6 @@
 import { allCoords } from '@/domain/model/coordinates';
 import { getCell } from '@/domain/model/board';
-import type { Board, GameState, StateSnapshot } from '@/domain/model/types';
+import type { Board, PendingJump, StateSnapshot } from '@/domain/model/types';
 
 /** Produces deterministic board hash used for history and threefold detection. */
 export function hashBoard(board: Board): string {
@@ -15,6 +15,12 @@ export function hashBoard(board: Board): string {
 }
 
 /** Produces full position hash (board + side to move). */
-export function hashPosition(state: Pick<GameState, 'board' | 'currentPlayer'> | StateSnapshot): string {
-  return `${state.currentPlayer}::${hashBoard(state.board)}`;
+export function hashPosition(
+  state: Pick<StateSnapshot, 'board' | 'currentPlayer'> & { pendingJump?: PendingJump | null },
+): string {
+  const pendingJumpKey = state.pendingJump
+    ? `${state.pendingJump.source}::${state.pendingJump.visitedStateKeys.join(',')}`
+    : '-';
+
+  return `${state.currentPlayer}::${pendingJumpKey}::${hashBoard(state.board)}`;
 }

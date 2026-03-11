@@ -41,6 +41,7 @@ export function createInitialState(_config: Partial<RuleConfig> = {}): GameState
     moveNumber: 1,
     status: 'active',
     victory: { type: 'none' },
+    pendingJump: null,
     history: [],
     positionCounts: {},
   };

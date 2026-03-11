@@ -23,8 +23,10 @@ import type {
   ActionKind,
   Board,
   Coord,
+  EngineState,
   GameState,
   JumpSequenceAction,
+  PendingJump,
   Player,
   RuleConfig,
   TurnAction,
@@ -45,6 +47,11 @@ type PartialJumpResolution = {
   visited: Set<string>;
 };
 
+export type AppliedActionState = {
+  board: Board;
+  pendingJump: PendingJump | null;
+};
+
 export type TargetMap = Record<ActionKind, Coord[]>;
 
 /** Creates empty per-action target buckets used by UI state and selectors. */
@@ -61,13 +68,13 @@ export function createEmptyTargetMap(): TargetMap {
 }
 
 /** Builds unique key for jump-loop prevention (coord + full board state). */
-function createJumpStateKey(coord: Coord, board: Board): string {
+export function createJumpStateKey(coord: Coord, board: Board): string {
   return `${coord}::${hashBoard(board)}`;
 }
 
-/** Rebuilds visited jump states from the active committed chain ending at `source`. */
+/** Rebuilds visited jump states from a committed chain when history is available. */
 function getCommittedJumpVisitedStates(
-  state: GameState,
+  state: Pick<GameState, 'history'>,
   source: Coord,
   movingPlayer: Player,
 ): Set<string> {
@@ -318,12 +325,59 @@ function getFriendlyTransferTargets(
   });
 }
 
+/** Returns visited jump-state set carried by the engine state or seeded from the source. */
+function getVisitedJumpStates(
+  state: Pick<EngineState, 'board' | 'pendingJump'> & Partial<Pick<GameState, 'history'>>,
+  source: Coord,
+): Set<string> {
+  if (state.pendingJump?.source === source) {
+    return new Set(state.pendingJump.visitedStateKeys);
+  }
+
+  if (state.history?.length) {
+    const movingPlayer = getMovingPlayer(state.board, source);
+
+    if (movingPlayer) {
+      const committedVisited = getCommittedJumpVisitedStates(
+        { history: state.history },
+        source,
+        movingPlayer,
+      );
+
+      if (committedVisited.size) {
+        return committedVisited;
+      }
+    }
+  }
+
+  return new Set([createJumpStateKey(source, state.board)]);
+}
+
+/** Returns filtered legal jump continuation targets for one board/visited context. */
+function getJumpTargetsForContext(
+  board: Board,
+  source: Coord,
+  movingPlayer: Player,
+  visited: Set<string>,
+): Coord[] {
+  return getJumpTargetsOnBoard(board, source, movingPlayer).filter((target) => {
+    const resolution = resolveJumpPath(board, source, [target], movingPlayer, visited);
+
+    return 'board' in resolution;
+  });
+}
+
 /** Returns next legal jump targets from a source plus optional pre-applied draft path. */
 export function getJumpContinuationTargets(
-  state: GameState,
+  state: Pick<EngineState, 'board' | 'pendingJump'> &
+    Partial<Pick<GameState, 'history' | 'currentPlayer'>>,
   source: Coord,
   draftPath: Coord[],
 ): Coord[] {
+  if (state.pendingJump && state.pendingJump.source !== source) {
+    return [];
+  }
+
   const movingPlayer = getMovingPlayer(state.board, source);
 
   if (!movingPlayer) {
@@ -332,11 +386,7 @@ export function getJumpContinuationTargets(
 
   let currentCoord = source;
   let currentBoard = state.board;
-  let visited = getCommittedJumpVisitedStates(state, source, movingPlayer);
-
-  if (!visited.size) {
-    visited = new Set([createJumpStateKey(source, state.board)]);
-  }
+  let visited = getVisitedJumpStates(state, source);
 
   for (const landing of draftPath) {
     const partial = resolveJumpPath(currentBoard, currentCoord, [landing], movingPlayer, visited);
@@ -350,16 +400,7 @@ export function getJumpContinuationTargets(
     visited = partial.visited;
   }
 
-  // Filter out landings that would immediately create an invalid repeated jump state.
-  return getJumpTargetsOnBoard(currentBoard, currentCoord, movingPlayer).filter((target) => {
-    const resolution = resolveJumpPath(currentBoard, currentCoord, [target], movingPlayer, visited);
-
-    if (!('board' in resolution)) {
-      return false;
-    }
-
-    return true;
-  });
+  return getJumpTargetsForContext(currentBoard, currentCoord, movingPlayer, visited);
 }
 
 /** Groups legal actions by kind into UI-ready target buckets. */
@@ -383,7 +424,7 @@ export function buildTargetMap(actions: TurnAction[]): TargetMap {
 
 /** Returns legal target coordinates per action kind for one selected cell. */
 export function getLegalTargetsForCell(
-  state: GameState,
+  state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
   coord: Coord,
   config: Partial<RuleConfig> = {},
 ): TargetMap {
@@ -392,7 +433,7 @@ export function getLegalTargetsForCell(
 
 /** Generates all legal actions for the current player from a specific coordinate. */
 export function getLegalActionsForCell(
-  state: GameState,
+  state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
   coord: Coord,
   config: Partial<RuleConfig> = {},
 ): TurnAction[] {
@@ -402,7 +443,15 @@ export function getLegalActionsForCell(
     return [];
   }
 
+  if (state.pendingJump && state.pendingJump.source !== coord) {
+    return [];
+  }
+
   if (isFrozenSingle(state.board, coord) && getTopChecker(state.board, coord)?.owner === state.currentPlayer) {
+    if (state.pendingJump) {
+      return [];
+    }
+
     return [{ type: 'manualUnfreeze', coord }];
   }
 
@@ -415,7 +464,6 @@ export function getLegalActionsForCell(
   }
 
   const actions: TurnAction[] = [];
-  const splitTargets = isPlayerStack ? getSplitTargets(state.board, coord) : [];
 
   actions.push(
     ...getJumpContinuationTargets(state, coord, []).map<JumpSequenceAction>((target) => ({
@@ -424,6 +472,12 @@ export function getLegalActionsForCell(
       path: [target],
     })),
   );
+
+  if (state.pendingJump) {
+    return actions;
+  }
+
+  const splitTargets = isPlayerStack ? getSplitTargets(state.board, coord) : [];
 
   actions.push(
     ...getClimbTargets(state.board, coord).map((target) => ({
@@ -476,9 +530,13 @@ export function getLegalActionsForCell(
 
 /** Generates every legal action for the current player across the whole board. */
 export function getLegalActions(
-  state: GameState,
+  state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
   config: Partial<RuleConfig> = {},
 ): TurnAction[] {
+  if (state.pendingJump) {
+    return getLegalActionsForCell(state, state.pendingJump.source, config);
+  }
+
   return allCoords().flatMap((coord) => getLegalActionsForCell(state, coord, config));
 }
 
@@ -525,10 +583,17 @@ function actionsEqual(left: TurnAction, right: TurnAction): boolean {
 
 /** Shared source ownership validation for action variants with a source coordinate. */
 function validateCommonSource(
-  state: GameState,
+  state: Pick<EngineState, 'board' | 'pendingJump'>,
   source: Coord,
   player: Player,
 ): ValidationResult {
+  if (state.pendingJump && state.pendingJump.source !== source) {
+    return {
+      valid: false,
+      reason: `Jump continuation must continue from ${state.pendingJump.source}.`,
+    };
+  }
+
   const topChecker = getTopChecker(state.board, source);
 
   if (!topChecker) {
@@ -544,12 +609,19 @@ function validateCommonSource(
 
 /** Validates action legality against current state and optional rule configuration. */
 export function validateAction(
-  state: GameState,
+  state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
   action: TurnAction,
   config: Partial<RuleConfig> = {},
 ): ValidationResult {
   if (state.status === 'gameOver') {
     return { valid: false, reason: 'The game is already over.' };
+  }
+
+  if (state.pendingJump && action.type !== 'jumpSequence') {
+    return {
+      valid: false,
+      reason: `Jump continuation must continue from ${state.pendingJump.source}.`,
+    };
   }
 
   switch (action.type) {
@@ -634,7 +706,7 @@ export function validateAction(
 
 /** Applies a validated action and returns next board state (or validation error). */
 export function applyActionToBoard(
-  state: GameState,
+  state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
   action: TurnAction,
   config: Partial<RuleConfig> = {},
 ): ValidationResult | Board {
@@ -648,11 +720,11 @@ export function applyActionToBoard(
   return applyValidatedActionToBoard(state, action);
 }
 
-/** Applies a previously validated action while preserving references for untouched cells. */
-export function applyValidatedActionToBoard(
-  state: GameState,
+/** Applies a previously validated action and returns next board plus jump-continuation state. */
+export function applyValidatedAction(
+  state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
   action: TurnAction,
-): ValidationResult | Board {
+): ValidationResult | AppliedActionState {
   const board = cloneBoardStructure(state.board);
   const clonedCoords = new Set<Coord>();
 
@@ -660,7 +732,10 @@ export function applyValidatedActionToBoard(
     case 'manualUnfreeze':
       ensureMutableCell(board, action.coord, clonedCoords);
       setSingleCheckerFrozen(board, action.coord, false);
-      return board;
+      return {
+        board,
+        pendingJump: null,
+      };
     case 'jumpSequence': {
       const movingPlayer = getMovingPlayer(state.board, action.source);
 
@@ -668,16 +743,44 @@ export function applyValidatedActionToBoard(
         return { valid: false, reason: `No moving player found at ${action.source}.` };
       }
 
-      const result = resolveJumpPath(state.board, action.source, action.path, movingPlayer);
+      const result = resolveJumpPath(
+        state.board,
+        action.source,
+        action.path,
+        movingPlayer,
+        getVisitedJumpStates(state, action.source),
+      );
 
-      return 'board' in result ? result.board : result;
+      if (!('board' in result)) {
+        return result;
+      }
+
+      const continuationTargets = getJumpTargetsForContext(
+        result.board,
+        result.currentCoord,
+        movingPlayer,
+        result.visited,
+      );
+
+      return {
+        board: result.board,
+        pendingJump: continuationTargets.length
+          ? {
+              source: result.currentCoord,
+              visitedStateKeys: [...result.visited],
+            }
+          : null,
+      };
     }
     case 'climbOne': {
       ensureMutableCell(board, action.source, clonedCoords);
       ensureMutableCell(board, action.target, clonedCoords);
       const movingCheckers = removeTopCheckers(board, action.source, 1);
       addCheckers(board, action.target, movingCheckers);
-      return board;
+      return {
+        board,
+        pendingJump: null,
+      };
     }
     case 'moveSingleToEmpty': {
       ensureMutableCell(board, action.source, clonedCoords);
@@ -685,28 +788,50 @@ export function applyValidatedActionToBoard(
       const movingCount = isStack(board, action.source) ? getCellHeight(board, action.source) : 1;
       const movingCheckers = removeTopCheckers(board, action.source, movingCount);
       addCheckers(board, action.target, movingCheckers);
-      return board;
+      return {
+        board,
+        pendingJump: null,
+      };
     }
     case 'splitOneFromStack': {
       ensureMutableCell(board, action.source, clonedCoords);
       ensureMutableCell(board, action.target, clonedCoords);
       const movingCheckers = removeTopCheckers(board, action.source, 1);
       addCheckers(board, action.target, movingCheckers);
-      return board;
+      return {
+        board,
+        pendingJump: null,
+      };
     }
     case 'splitTwoFromStack': {
       ensureMutableCell(board, action.source, clonedCoords);
       ensureMutableCell(board, action.target, clonedCoords);
       const movingCheckers = removeTopCheckers(board, action.source, 2);
       addCheckers(board, action.target, movingCheckers);
-      return board;
+      return {
+        board,
+        pendingJump: null,
+      };
     }
     case 'friendlyStackTransfer': {
       ensureMutableCell(board, action.source, clonedCoords);
       ensureMutableCell(board, action.target, clonedCoords);
       const movingCheckers = removeTopCheckers(board, action.source, 1);
       addCheckers(board, action.target, movingCheckers);
-      return board;
+      return {
+        board,
+        pendingJump: null,
+      };
     }
   }
+}
+
+/** Applies a previously validated action while preserving references for untouched cells. */
+export function applyValidatedActionToBoard(
+  state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
+  action: TurnAction,
+): ValidationResult | Board {
+  const nextState = applyValidatedAction(state, action);
+
+  return 'valid' in nextState ? nextState : nextState.board;
 }

@@ -742,7 +742,7 @@ describe('game engine', () => {
 
     expect(serialized).not.toContain('\n');
     expect(prettySerialized).toContain('\n');
-    expect(restored.version).toBe(2);
+    expect(restored.version).toBe(3);
     expect(restoredGameState.currentPlayer).toBe('white');
     expect(() => deserializeSession('{"version":1,"present":{}}')).toThrow();
   });

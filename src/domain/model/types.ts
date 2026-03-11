@@ -24,6 +24,11 @@ export type RuleConfig = {
   scoringMode: 'off' | 'basic';
 };
 
+export type PendingJump = {
+  source: Coord;
+  visitedStateKeys: string[];
+};
+
 export type JumpSequenceAction = {
   type: 'jumpSequence';
   source: Coord;
@@ -89,6 +94,11 @@ export type StateSnapshot = {
   moveNumber: number;
   status: 'active' | 'gameOver';
   victory: Victory;
+  pendingJump: PendingJump | null;
+};
+
+export type EngineState = StateSnapshot & {
+  positionCounts: Record<string, number>;
 };
 
 export type TurnRecord = {
@@ -101,9 +111,8 @@ export type TurnRecord = {
   positionHash: string;
 };
 
-export type GameState = StateSnapshot & {
+export type GameState = EngineState & {
   history: TurnRecord[];
-  positionCounts: Record<string, number>;
 };
 
 export type ValidationResult =
