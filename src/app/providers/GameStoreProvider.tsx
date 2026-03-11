@@ -6,22 +6,26 @@ import { createGameStore } from '@/app/store/createGameStore';
 import type { GameStoreState } from '@/app/store/createGameStore';
 import type { SerializableSession } from '@/shared/types/session';
 
+type CreateGameStoreOptions = Parameters<typeof createGameStore>[0];
+
 const GameStoreContext = createContext<StoreApi<GameStoreState> | null>(null);
 
 type GameStoreProviderProps = {
   children: React.ReactNode;
   initialSession?: SerializableSession;
+  storeOptions?: Omit<CreateGameStoreOptions, 'initialSession'>;
 };
 
 /** Creates and exposes one store instance for the whole React subtree. */
 export function GameStoreProvider({
   children,
   initialSession,
+  storeOptions,
 }: GameStoreProviderProps) {
   const storeRef = useRef<StoreApi<GameStoreState> | null>(null);
 
   if (!storeRef.current) {
-    storeRef.current = createGameStore({ initialSession });
+    storeRef.current = createGameStore({ ...storeOptions, initialSession });
   }
 
   return (

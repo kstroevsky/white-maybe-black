@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { useGameStore } from '@/app/providers/GameStoreProvider';
 import { formatTurnRecord, text } from '@/shared/i18n/catalog';
+import { MatchSetupPanel } from '@/ui/panels/MatchSetupPanel';
 import { Button } from '@/ui/primitives/Button';
 import { Panel } from '@/ui/primitives/Panel';
 
@@ -10,8 +11,10 @@ import styles from './style.module.scss';
 
 type HistoryState = 'current' | 'future' | 'past';
 
-function historyCountLabel(language: 'english' | 'russian', count: number): string {
-  return language === 'russian' ? `Всего: ${count}` : `Total: ${count}`;
+function historySummaryLabel(language: 'english' | 'russian', count: number, cursor: number): string {
+  return language === 'russian'
+    ? `Всего: ${count} · Позиция истории: ${cursor}`
+    : `Total: ${count} · History cursor: ${cursor}`;
 }
 
 export function HistorySection() {
@@ -42,7 +45,7 @@ export function HistorySection() {
             {text(language, 'redo')}
           </Button>
         </div>
-        <small>{historyCountLabel(language, deferredTurnLog.length)}</small>
+        <small>{historySummaryLabel(language, deferredTurnLog.length, historyCursor)}</small>
       </div>
       <ol className={styles.list}>
         {historyEntries.map(({ record, index }) => {
@@ -66,9 +69,9 @@ export function HistorySection() {
           );
         })}
       </ol>
-      <p className={styles.meta}>
-        <strong>{text(language, 'historyCursor')}:</strong> {historyCursor}
-      </p>
+      <div className={styles.footer}>
+        <MatchSetupPanel compact embedded />
+      </div>
     </Panel>
   );
 }

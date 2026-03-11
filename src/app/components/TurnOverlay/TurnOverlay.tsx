@@ -20,13 +20,18 @@ function getPassOverlayLabel(language: Language, player: 'white' | 'black'): str
 }
 
 export function TurnOverlay() {
-  const { interaction, language, acknowledgePassScreen } = useGameStore(
+  const { interaction, language, matchSettings, acknowledgePassScreen } = useGameStore(
     useShallow((state) => ({
       interaction: state.interaction,
       language: state.preferences.language,
+      matchSettings: state.matchSettings,
       acknowledgePassScreen: state.acknowledgePassScreen,
     })),
   );
+
+  if (matchSettings.opponentMode === 'computer') {
+    return null;
+  }
 
   if (interaction.type !== 'passingDevice' && interaction.type !== 'turnResolved') {
     return null;

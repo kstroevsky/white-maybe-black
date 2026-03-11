@@ -4,18 +4,18 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-height: 0;
 }
 
 .summary {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .turnBanner {
-  padding: 8px;
+  padding: 6px;
   border: 1px solid tokens.$color-brown-950;
   background: #2a1708;
   color: tokens.$color-cream-200;
@@ -39,7 +39,7 @@
 .metaGrid {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .textRow,
@@ -53,6 +53,11 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.retryRow {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .summary[data-compact='true'] {

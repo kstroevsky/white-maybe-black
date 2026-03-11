@@ -14,7 +14,11 @@ export function BoardStage() {
       legalTargets: state.legalTargets,
       selectedCell: state.selectedCell,
       selectableCoords:
-        state.interaction.type === 'passingDevice' ? NO_SELECTABLE_COORDS : state.selectableCoords,
+        state.interaction.type === 'passingDevice' ||
+        (state.matchSettings.opponentMode === 'computer' &&
+          state.gameState.currentPlayer !== state.matchSettings.humanPlayer)
+          ? NO_SELECTABLE_COORDS
+          : state.selectableCoords,
       onSelectCell: state.selectCell,
     })),
   );

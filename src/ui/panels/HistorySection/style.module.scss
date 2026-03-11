@@ -11,8 +11,9 @@
 .header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   min-width: 0;
   justify-content: space-between;
 
@@ -81,9 +82,10 @@
   font-size: 0.8rem;
 }
 
-.meta {
-  margin: 4px 0 0;
-  color: tokens.$color-panel-text;
+.footer {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid tokens.$color-panel-border;
 }
 
 @media (max-width: 1180px) {

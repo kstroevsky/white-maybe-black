@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { RULE_TOGGLE_DESCRIPTORS } from '@/domain';
 import { useGameStore } from '@/app/providers/GameStoreProvider';
 import { text } from '@/shared/i18n/catalog';
-import { Button } from '@/ui/primitives/Button';
 import { Panel } from '@/ui/primitives/Panel';
 import { GlossaryTooltip } from '@/ui/tooltips/GlossaryTooltip';
 
@@ -18,7 +17,6 @@ export function RulesSessionSection() {
     language,
     preferences,
     ruleConfig,
-    onRestart,
     onSetPreference,
     onSetRuleConfig,
   } = useGameStore(
@@ -26,7 +24,6 @@ export function RulesSessionSection() {
       language: state.preferences.language,
       preferences: state.preferences,
       ruleConfig: state.ruleConfig,
-      onRestart: state.restart,
       onSetPreference: state.setPreference,
       onSetRuleConfig: state.setRuleConfig,
     })),
@@ -72,9 +69,6 @@ export function RulesSessionSection() {
           </label>
           <GlossaryTooltip language={language} termId="passDeviceOverlay" />
         </div>
-      </div>
-      <div className={styles.actions}>
-        <Button onClick={onRestart}>{text(language, 'restart')}</Button>
       </div>
     </Panel>
   );

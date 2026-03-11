@@ -1,5 +1,6 @@
 import { createStore } from 'zustand/vanilla';
 
+import type { AiSearchResult, AiWorkerRequest, AiWorkerResponse } from '@/ai';
 import {
   applyAction,
   buildTargetMap,
@@ -25,19 +26,34 @@ import type {
   TurnAction,
   TurnRecord,
 } from '@/domain';
+import { DEFAULT_MATCH_SETTINGS } from '@/shared/constants/match';
 import { hashPosition } from '@/domain/model/hash';
 import { LEGACY_SESSION_STORAGE_KEYS, SESSION_STORAGE_KEY } from '@/shared/constants/storage';
 import type {
   AppPreferences,
   InteractionState,
+  MatchSettings,
   SerializableSession,
   UndoFrame,
 } from '@/shared/types/session';
 import { uniqueValues } from '@/shared/utils/collections';
 
+type AiStatus = 'idle' | 'thinking' | 'error';
+
+type AiWorkerLike = {
+  onerror: ((event: ErrorEvent) => void) | null;
+  onmessage: ((event: MessageEvent<AiWorkerResponse>) => void) | null;
+  postMessage: (message: AiWorkerRequest) => void;
+  terminate: () => void;
+};
+
 type GameStoreData = {
+  aiError: string | null;
+  aiStatus: AiStatus;
   ruleConfig: RuleConfig;
   preferences: AppPreferences;
+  matchSettings: MatchSettings;
+  setupMatchSettings: MatchSettings;
   gameState: GameState;
   turnLog: TurnRecord[];
   past: UndoFrame[];
@@ -54,6 +70,8 @@ type GameStoreData = {
   historyCursor: number;
   importBuffer: string;
   importError: string | null;
+  lastAiDecision: AiSearchResult | null;
+  pendingAiRequestId: number | null;
   exportBuffer: string;
 };
 
@@ -65,11 +83,14 @@ export type GameStoreState = GameStoreData & {
   importSessionFromBuffer: () => void;
   redo: () => void;
   refreshExportBuffer: () => void;
+  retryComputerMove: () => void;
   restart: () => void;
   selectCell: (coord: Coord) => void;
   setImportBuffer: (value: string) => void;
+  setSetupMatchSettings: (partial: Partial<MatchSettings>) => void;
   setPreference: (partial: Partial<AppPreferences>) => void;
   setRuleConfig: (partial: Partial<RuleConfig>) => void;
+  startNewGame: (matchSettings?: MatchSettings) => void;
   undo: () => void;
 };
 
@@ -95,19 +116,29 @@ function ruleConfigKey(config: RuleConfig): string {
   ].join(':');
 }
 
+function isComputerMatch(matchSettings: MatchSettings): boolean {
+  return matchSettings.opponentMode === 'computer';
+}
+
+function isComputerTurn(gameState: GameState, matchSettings: MatchSettings): boolean {
+  return isComputerMatch(matchSettings) && gameState.currentPlayer !== matchSettings.humanPlayer;
+}
+
 /** Builds serializable session payload from store slices. */
 function buildSession(
   ruleConfig: RuleConfig,
   preferences: AppPreferences,
+  matchSettings: MatchSettings,
   present: GameState,
   turnLog: TurnRecord[],
   past: UndoFrame[],
   future: UndoFrame[],
 ): SerializableSession {
   return {
-    version: 2,
+    version: 3,
     ruleConfig,
     preferences,
+    matchSettings,
     turnLog,
     present: createUndoFrame(present),
     past,
@@ -202,13 +233,21 @@ function getDefaultSession(): SerializableSession {
   const ruleConfig = withRuleDefaults();
   const present = createInitialState(ruleConfig);
 
-  return buildSession(ruleConfig, DEFAULT_PREFERENCES, present, [], [], []);
+  return buildSession(ruleConfig, DEFAULT_PREFERENCES, DEFAULT_MATCH_SETTINGS, present, [], [], []);
 }
 
 /** Rehydrates runtime game state and store slices from one serialized session. */
 function createRuntimeState(session: SerializableSession): Pick<
   GameStoreData,
-  'ruleConfig' | 'preferences' | 'gameState' | 'turnLog' | 'past' | 'future' | 'historyCursor'
+  | 'ruleConfig'
+  | 'preferences'
+  | 'matchSettings'
+  | 'setupMatchSettings'
+  | 'gameState'
+  | 'turnLog'
+  | 'past'
+  | 'future'
+  | 'historyCursor'
 > {
   const turnLog = session.turnLog.slice();
   const gameState = restoreGameState(session.present, turnLog);
@@ -216,6 +255,8 @@ function createRuntimeState(session: SerializableSession): Pick<
   return {
     ruleConfig: session.ruleConfig,
     preferences: session.preferences,
+    matchSettings: session.matchSettings,
+    setupMatchSettings: session.matchSettings,
     gameState,
     turnLog,
     past: session.past.slice(),
@@ -288,35 +329,23 @@ type JumpContinuationSelection = {
 
 /** Detects whether the active player must continue a jump chain from the latest landing. */
 function getJumpContinuationSelection(gameState: GameState): JumpContinuationSelection | null {
-  if (gameState.status === 'gameOver') {
+  if (gameState.status === 'gameOver' || !gameState.pendingJump) {
     return null;
   }
-
-  const lastRecord = gameState.history.at(-1);
-
-  if (!lastRecord || lastRecord.action.type !== 'jumpSequence' || lastRecord.actor !== gameState.currentPlayer) {
-    return null;
-  }
-
-  const source = lastRecord.action.path.at(-1);
-
-  if (!source) {
-    return null;
-  }
-
-  const targets = uniqueValues(getJumpContinuationTargets(gameState, source, []));
+  const targets = uniqueValues(getJumpContinuationTargets(gameState, gameState.pendingJump.source, []));
 
   if (!targets.length) {
     return null;
   }
 
   return {
-    source,
+    source: gameState.pendingJump.source,
     targets,
   };
 }
 
 type StoreOptions = {
+  createAiWorker?: () => AiWorkerLike | null;
   initialSession?: SerializableSession;
   storage?: Storage;
 };
@@ -415,15 +444,208 @@ export function createGameStore(options: StoreOptions = {}) {
       : { type: 'idle' };
 
   const store = createStore<GameStoreState>((set, get) => {
+    let aiWorker: AiWorkerLike | null = null;
+    let nextAiRequestId = 1;
+
+    function getTurnSpans(turnLog: TurnRecord[], historyCursor: number): Array<{
+      actor: TurnRecord['actor'];
+      end: number;
+      start: number;
+    }> {
+      const spans: Array<{ actor: TurnRecord['actor']; end: number; start: number }> = [];
+
+      for (let index = 0; index < historyCursor; index += 1) {
+        const record = turnLog[index];
+        const currentSpan = spans.at(-1);
+
+        if (!currentSpan || currentSpan.actor !== record.actor) {
+          spans.push({
+            actor: record.actor,
+            end: index + 1,
+            start: index,
+          });
+          continue;
+        }
+
+        currentSpan.end = index + 1;
+      }
+
+      return spans;
+    }
+
+    function getComputerUndoTarget(state: GameStoreState): number {
+      const spans = getTurnSpans(state.turnLog, state.historyCursor);
+      const lastSpan = spans.at(-1);
+
+      if (!lastSpan) {
+        return state.historyCursor;
+      }
+
+      if (
+        isComputerTurn(state.gameState, state.matchSettings) &&
+        (state.aiStatus === 'thinking' || state.aiStatus === 'error')
+      ) {
+        return lastSpan.start;
+      }
+
+      if (lastSpan.actor !== state.matchSettings.humanPlayer) {
+        const previousHumanSpan = [...spans]
+          .reverse()
+          .find((span) => span.actor === state.matchSettings.humanPlayer && span.start < lastSpan.start);
+
+        return previousHumanSpan?.start ?? lastSpan.start;
+      }
+
+      return lastSpan.start;
+    }
+
+    function disposeAiWorker(): void {
+      if (!aiWorker) {
+        return;
+      }
+
+      aiWorker.onmessage = null;
+      aiWorker.onerror = null;
+      aiWorker.terminate();
+      aiWorker = null;
+    }
+
+    function getAiWorker(): AiWorkerLike | null {
+      if (aiWorker) {
+        return aiWorker;
+      }
+
+      const workerFactory =
+        options.createAiWorker ??
+        (() => {
+          if (typeof Worker === 'undefined') {
+            return null;
+          }
+
+          return new Worker(
+            new URL('../../ai/worker/ai.worker.ts', import.meta.url),
+            { type: 'module' },
+          ) as AiWorkerLike;
+        });
+
+      aiWorker = workerFactory();
+
+      if (!aiWorker) {
+        return null;
+      }
+
+      aiWorker.onmessage = (event) => {
+        const message = event.data;
+        const latest = get();
+
+        if (message.requestId !== latest.pendingAiRequestId) {
+          return;
+        }
+
+        if (message.type === 'error') {
+          set({
+            aiError: message.message,
+            aiStatus: 'error',
+            pendingAiRequestId: null,
+          });
+          return;
+        }
+
+        if (!message.result.action) {
+          set({
+            aiError: null,
+            aiStatus: 'idle',
+            lastAiDecision: message.result,
+            pendingAiRequestId: null,
+          });
+          return;
+        }
+
+        commitAction(message.result.action, message.result);
+      };
+      aiWorker.onerror = (event) => {
+        set({
+          aiError: event.message || 'Computer move failed.',
+          aiStatus: 'error',
+          pendingAiRequestId: null,
+        });
+      };
+
+      return aiWorker;
+    }
+
+    function syncComputerTurn(): void {
+      const state = get();
+
+      if (
+        !isComputerTurn(state.gameState, state.matchSettings) ||
+        state.gameState.status !== 'active' ||
+        state.historyCursor !== state.turnLog.length ||
+        state.future.length > 0
+      ) {
+        if (state.aiStatus !== 'error' && state.pendingAiRequestId !== null) {
+          set({
+            aiStatus: 'idle',
+            pendingAiRequestId: null,
+          });
+        }
+        return;
+      }
+
+      if (state.pendingAiRequestId !== null || state.aiStatus === 'thinking') {
+        return;
+      }
+
+      const worker = getAiWorker();
+
+      if (!worker) {
+        set({
+          aiError: 'Computer worker is unavailable.',
+          aiStatus: 'error',
+          pendingAiRequestId: null,
+        });
+        return;
+      }
+
+      const requestId = nextAiRequestId;
+      nextAiRequestId += 1;
+
+      set({
+        aiError: null,
+        aiStatus: 'thinking',
+        pendingAiRequestId: requestId,
+      });
+
+      worker.postMessage({
+        type: 'chooseMove',
+        requestId,
+        ruleConfig: state.ruleConfig,
+        state: state.gameState,
+        matchSettings: state.matchSettings,
+      });
+    }
+
+    function resetAiState(status: AiStatus = 'idle'): Pick<
+      GameStoreData,
+      'aiError' | 'aiStatus' | 'pendingAiRequestId'
+    > {
+      return {
+        aiError: null,
+        aiStatus: status,
+        pendingAiRequestId: null,
+      };
+    }
+
     /** Persists current core session slices after state transitions. */
     function persistCurrentState(nextState: Pick<
       GameStoreData,
-      'ruleConfig' | 'preferences' | 'gameState' | 'turnLog' | 'past' | 'future'
+      'ruleConfig' | 'preferences' | 'matchSettings' | 'gameState' | 'turnLog' | 'past' | 'future'
     >): void {
       persistSession(
         buildSession(
           nextState.ruleConfig,
           nextState.preferences,
+          nextState.matchSettings,
           nextState.gameState,
           nextState.turnLog,
           nextState.past,
@@ -434,13 +656,14 @@ export function createGameStore(options: StoreOptions = {}) {
     }
 
     /** Commits one validated turn action through the domain reducer and updates app-level flow state. */
-    function commitAction(action: TurnAction): void {
+    function commitAction(action: TurnAction, aiDecision: AiSearchResult | null = null): void {
       const state = get();
       const nextGameState = applyAction(state.gameState, action, state.ruleConfig);
       const nextTurnLog = nextGameState.history;
       const nextPast = [...state.past, createUndoFrame(state.gameState)];
       const nextFuture: UndoFrame[] = [];
       const jumpContinuation = getJumpContinuationSelection(nextGameState);
+      const computerMatch = isComputerMatch(state.matchSettings);
       const nextInteraction: InteractionState = jumpContinuation
         ? {
             type: 'buildingJumpChain',
@@ -450,6 +673,8 @@ export function createGameStore(options: StoreOptions = {}) {
           }
         : nextGameState.status === 'gameOver'
           ? { type: 'gameOver' }
+          : computerMatch
+            ? { type: 'idle' }
           : state.preferences.passDeviceOverlayEnabled
             ? { type: 'passingDevice', nextPlayer: nextGameState.currentPlayer }
             : { type: 'turnResolved', nextPlayer: nextGameState.currentPlayer };
@@ -457,6 +682,7 @@ export function createGameStore(options: StoreOptions = {}) {
       const nextData = {
         ruleConfig: state.ruleConfig,
         preferences: state.preferences,
+        matchSettings: state.matchSettings,
         gameState: nextGameState,
         turnLog: nextTurnLog,
         past: nextPast,
@@ -480,12 +706,19 @@ export function createGameStore(options: StoreOptions = {}) {
               },
             )
           : createSelectionState(null, null, nextInteraction)),
+        ...resetAiState(),
         importError: null,
+        lastAiDecision: aiDecision ?? state.lastAiDecision,
       });
       persistCurrentState(nextData);
+      syncComputerTurn();
 
       // Skip pass overlay by briefly entering turnResolved and then immediately returning to idle.
-      if (!state.preferences.passDeviceOverlayEnabled && nextGameState.status !== 'gameOver') {
+      if (
+        !state.preferences.passDeviceOverlayEnabled &&
+        nextGameState.status !== 'gameOver' &&
+        !isComputerTurn(nextGameState, state.matchSettings)
+      ) {
         queueMicrotask(() => {
           const latest = get();
 
@@ -500,6 +733,7 @@ export function createGameStore(options: StoreOptions = {}) {
 
     /** Replaces entire store session (used by import and initialization paths). */
     function applySession(session: SerializableSession): void {
+      disposeAiWorker();
       const runtimeState = createRuntimeState(session);
       const nextBoardDerivation = getBoardDerivation(runtimeState.gameState, runtimeState.ruleConfig);
       const jumpContinuation = getJumpContinuationSelection(runtimeState.gameState);
@@ -525,24 +759,28 @@ export function createGameStore(options: StoreOptions = {}) {
               },
             )
           : createIdleSelection(runtimeState.gameState)),
+        ...resetAiState(),
+        lastAiDecision: null,
         importBuffer: '',
         importError: null,
         exportBuffer: current.exportBuffer,
       }));
       persistSession(session, storage);
+      syncComputerTurn();
     }
 
     /** Produces one undo/redo transition payload without mutating store state. */
     function getHistoryStepData(
       state: Pick<
         GameStoreData,
-        'ruleConfig' | 'preferences' | 'gameState' | 'turnLog' | 'past' | 'future'
+        'ruleConfig' | 'preferences' | 'matchSettings' | 'gameState' | 'turnLog' | 'past' | 'future'
       >,
       direction: 'backward' | 'forward',
     ): Pick<
       GameStoreData,
       | 'ruleConfig'
       | 'preferences'
+      | 'matchSettings'
       | 'gameState'
       | 'turnLog'
       | 'past'
@@ -566,6 +804,7 @@ export function createGameStore(options: StoreOptions = {}) {
         return {
           ruleConfig: state.ruleConfig,
           preferences: state.preferences,
+          matchSettings: state.matchSettings,
           gameState: previousGameState,
           turnLog: state.turnLog,
           past: nextPast,
@@ -589,6 +828,7 @@ export function createGameStore(options: StoreOptions = {}) {
       return {
         ruleConfig: state.ruleConfig,
         preferences: state.preferences,
+        matchSettings: state.matchSettings,
         gameState: nextGameState,
         turnLog: state.turnLog,
         past: nextPast,
@@ -600,6 +840,7 @@ export function createGameStore(options: StoreOptions = {}) {
 
     /** Applies a single backward/forward history step and persists state. */
     function applyHistoryStep(direction: 'backward' | 'forward'): boolean {
+      disposeAiWorker();
       const state = get();
       const nextData = getHistoryStepData(state, direction);
 
@@ -610,8 +851,10 @@ export function createGameStore(options: StoreOptions = {}) {
       set({
         ...nextData,
         ...createIdleSelection(nextData.gameState),
+        ...resetAiState(),
       });
       persistCurrentState(nextData);
+      syncComputerTurn();
 
       return true;
     }
@@ -619,6 +862,8 @@ export function createGameStore(options: StoreOptions = {}) {
     return {
       ...initialRuntimeState,
       ...initialBoardDerivation,
+      aiError: null,
+      aiStatus: 'idle',
       selectedCell: initialJumpContinuation?.source ?? null,
       selectedActionType: initialJumpContinuation ? 'jumpSequence' : null,
       selectedTargetMap: initialJumpContinuation
@@ -630,6 +875,8 @@ export function createGameStore(options: StoreOptions = {}) {
       interaction: initialInteraction,
       importBuffer: '',
       importError: null,
+      lastAiDecision: null,
+      pendingAiRequestId: null,
       exportBuffer: '',
       acknowledgePassScreen: () => {
         const state = get();
@@ -644,6 +891,11 @@ export function createGameStore(options: StoreOptions = {}) {
       },
       cancelInteraction: () => {
         const state = get();
+
+        if (isComputerTurn(state.gameState, state.matchSettings)) {
+          return;
+        }
+
         const jumpContinuation = getJumpContinuationSelection(state.gameState);
 
         if (!jumpContinuation) {
@@ -674,7 +926,11 @@ export function createGameStore(options: StoreOptions = {}) {
         const state = get();
         const source = state.selectedCell;
 
-        if (!source || !state.availableActionKinds.includes(actionType)) {
+        if (
+          !source ||
+          !state.availableActionKinds.includes(actionType) ||
+          isComputerTurn(state.gameState, state.matchSettings)
+        ) {
           return;
         }
 
@@ -768,6 +1024,7 @@ export function createGameStore(options: StoreOptions = {}) {
             buildSession(
               state.ruleConfig,
               state.preferences,
+              state.matchSettings,
               state.gameState,
               state.turnLog,
               state.past,
@@ -777,33 +1034,28 @@ export function createGameStore(options: StoreOptions = {}) {
           ),
         });
       },
-      restart: () => {
+      retryComputerMove: () => {
         const state = get();
-        const nextGameState = createInitialState(state.ruleConfig);
-        const nextBoardDerivation = getBoardDerivation(nextGameState, state.ruleConfig);
-        const nextData = {
-          ruleConfig: state.ruleConfig,
-          preferences: state.preferences,
-          gameState: nextGameState,
-          turnLog: [],
-          past: [],
-          future: [],
-          historyCursor: 0,
-          ...nextBoardDerivation,
-        };
 
-        set({
-          ...nextData,
-          ...createIdleSelection(nextGameState),
-          importBuffer: '',
-          importError: null,
-        });
-        persistCurrentState(nextData);
+        if (
+          !isComputerTurn(state.gameState, state.matchSettings) ||
+          state.aiStatus === 'thinking'
+        ) {
+          return;
+        }
+
+        syncComputerTurn();
+      },
+      restart: () => {
+        get().startNewGame(get().matchSettings);
       },
       selectCell: (coord) => {
         const state = get();
 
-        if (state.interaction.type === 'passingDevice') {
+        if (
+          state.interaction.type === 'passingDevice' ||
+          isComputerTurn(state.gameState, state.matchSettings)
+        ) {
           return;
         }
 
@@ -870,6 +1122,16 @@ export function createGameStore(options: StoreOptions = {}) {
       setImportBuffer: (value) => {
         set({ importBuffer: value });
       },
+      setSetupMatchSettings: (partial) => {
+        const state = get();
+
+        set({
+          setupMatchSettings: {
+            ...state.setupMatchSettings,
+            ...partial,
+          },
+        });
+      },
       setPreference: (partial) => {
         const state = get();
         const preferences = {
@@ -879,6 +1141,7 @@ export function createGameStore(options: StoreOptions = {}) {
         const nextData = {
           ruleConfig: state.ruleConfig,
           preferences,
+          matchSettings: state.matchSettings,
           gameState: state.gameState,
           turnLog: state.turnLog,
           past: state.past,
@@ -895,6 +1158,7 @@ export function createGameStore(options: StoreOptions = {}) {
         persistCurrentState(nextData);
       },
       setRuleConfig: (partial) => {
+        disposeAiWorker();
         const state = get();
         const ruleConfig = withRuleDefaults({
           ...state.ruleConfig,
@@ -908,6 +1172,7 @@ export function createGameStore(options: StoreOptions = {}) {
           if (victory.type !== 'none') {
             nextGameState = {
               ...nextGameState,
+              pendingJump: null,
               status: 'gameOver',
               victory,
             };
@@ -919,6 +1184,7 @@ export function createGameStore(options: StoreOptions = {}) {
         const nextData = {
           ruleConfig,
           preferences: state.preferences,
+          matchSettings: state.matchSettings,
           gameState: nextGameState,
           turnLog: state.turnLog,
           past: state.past,
@@ -930,13 +1196,72 @@ export function createGameStore(options: StoreOptions = {}) {
         set({
           ...nextData,
           ...createIdleSelection(nextGameState),
+          ...resetAiState(),
         });
         persistCurrentState(nextData);
+        syncComputerTurn();
+      },
+      startNewGame: (matchSettings = get().setupMatchSettings) => {
+        disposeAiWorker();
+        const state = get();
+        const nextGameState = createInitialState(state.ruleConfig);
+        const nextBoardDerivation = getBoardDerivation(nextGameState, state.ruleConfig);
+        const nextData = {
+          ruleConfig: state.ruleConfig,
+          preferences: state.preferences,
+          matchSettings,
+          gameState: nextGameState,
+          turnLog: [],
+          past: [],
+          future: [],
+          historyCursor: 0,
+          ...nextBoardDerivation,
+        };
+
+        set({
+          ...nextData,
+          ...createIdleSelection(nextGameState),
+          ...resetAiState(),
+          importBuffer: '',
+          importError: null,
+          lastAiDecision: null,
+          setupMatchSettings: matchSettings,
+        });
+        persistCurrentState(nextData);
+        syncComputerTurn();
       },
       undo: () => {
+        const state = get();
+
+        if (isComputerMatch(state.matchSettings)) {
+          const targetCursor = getComputerUndoTarget(state);
+
+          if (targetCursor === state.historyCursor) {
+            return;
+          }
+
+          while (get().historyCursor !== targetCursor) {
+            const moved = applyHistoryStep('backward');
+
+            if (!moved) {
+              break;
+            }
+          }
+
+          return;
+        }
+
         applyHistoryStep('backward');
       },
     };
+  });
+
+  queueMicrotask(() => {
+    const state = store.getState();
+
+    if (isComputerTurn(state.gameState, state.matchSettings)) {
+      state.retryComputerMove();
+    }
   });
 
   return store;

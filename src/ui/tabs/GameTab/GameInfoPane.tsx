@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { useGameStore } from '@/app/providers/GameStoreProvider';
 import { describeInteraction, formatVictory, text } from '@/shared/i18n/catalog';
+import { MatchSetupPanel } from '@/ui/panels/MatchSetupPanel';
 import { ScoreCompactTable } from '@/ui/panels/ScoreCompactTable';
 import { getVictoryTermId } from '@/ui/panels/StatusSection/TurnSummaryStrip';
 import { Panel } from '@/ui/primitives/Panel';
@@ -44,6 +45,8 @@ export function GameInfoPane() {
         <p className={styles.infoText}>{describeInteraction(language, interaction)}</p>
         <p className={styles.infoHint}>{text(language, 'glossaryHint')}</p>
       </Panel>
+
+      <MatchSetupPanel compact />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useGameStore } from '@/app/providers/GameStoreProvider';
 import type { GlossaryTermId } from '@/features/glossary/terms';
 import { describeInteraction, formatVictory, playerLabel, text } from '@/shared/i18n/catalog';
 import type { Language } from '@/shared/i18n/types';
+import { Button } from '@/ui/primitives/Button';
 import { GlossaryTooltip } from '@/ui/tooltips/GlossaryTooltip';
 
 import styles from './style.module.scss';
@@ -17,6 +18,17 @@ function getTurnLabel(language: Language, currentPlayer: GameState['currentPlaye
   return language === 'russian'
     ? `${playerLabel(language, currentPlayer)} ходят`
     : `${playerLabel(language, currentPlayer)} turn`;
+}
+
+function getDifficultyLabel(language: Language, difficulty: 'easy' | 'medium' | 'hard'): string {
+  switch (difficulty) {
+    case 'easy':
+      return text(language, 'difficultyEasy');
+    case 'medium':
+      return text(language, 'difficultyMedium');
+    case 'hard':
+      return text(language, 'difficultyHard');
+  }
 }
 
 export function getVictoryTermId(victory: Victory): GlossaryTermId | null {
@@ -33,28 +45,56 @@ export function getVictoryTermId(victory: Victory): GlossaryTermId | null {
 }
 
 export function TurnSummaryStrip({ compact = false }: TurnSummaryStripProps) {
-  const { currentPlayer, interaction, language, moveNumber, selectedCell, victory } = useGameStore(
+  const {
+    aiStatus,
+    currentPlayer,
+    interaction,
+    language,
+    matchSettings,
+    moveNumber,
+    selectedCell,
+    victory,
+    onRetryComputerMove,
+  } = useGameStore(
     useShallow((state) => ({
+      aiStatus: state.aiStatus,
       currentPlayer: state.gameState.currentPlayer,
       interaction: state.interaction,
       language: state.preferences.language,
+      matchSettings: state.matchSettings,
       moveNumber: state.gameState.moveNumber,
       selectedCell: state.selectedCell,
       victory: state.gameState.victory,
+      onRetryComputerMove: state.retryComputerMove,
     })),
   );
   const victoryTermId = getVictoryTermId(victory);
+  const isComputerTurn =
+    matchSettings.opponentMode === 'computer' && currentPlayer !== matchSettings.humanPlayer;
+  const interactionCopy =
+    isComputerTurn && aiStatus === 'error'
+      ? text(language, 'computerMoveFailed')
+      : isComputerTurn
+        ? text(language, 'computerThinking')
+        : describeInteraction(language, interaction);
+  const matchModeCopy =
+    matchSettings.opponentMode === 'computer'
+      ? `${text(language, 'computerOpponent')} • ${text(language, 'playAs')} ${playerLabel(language, matchSettings.humanPlayer)} • ${getDifficultyLabel(language, matchSettings.aiDifficulty)}`
+      : text(language, 'hotSeat');
 
   return (
     <div className={styles.summary} data-compact={compact || undefined}>
       <div className={styles.turnBanner}>
         <p>{getTurnLabel(language, currentPlayer)}</p>
-        <small>{describeInteraction(language, interaction)}</small>
+        <small>{interactionCopy}</small>
       </div>
 
       <div className={styles.metaGrid}>
         <p className={styles.textRow}>
           <strong>{text(language, 'moveNumberLabel')}:</strong> {moveNumber}
+        </p>
+        <p className={styles.textRow}>
+          <strong>{text(language, 'matchModeLabel')}:</strong> {matchModeCopy}
         </p>
         <p className={styles.textRowInline}>
           <strong>{text(language, 'statusLabel')}:</strong> {formatVictory(language, victory)}
@@ -64,6 +104,11 @@ export function TurnSummaryStrip({ compact = false }: TurnSummaryStripProps) {
           <p className={styles.textRow}>
             <strong>{text(language, 'selectedCellLabel')}:</strong> {selectedCell}
           </p>
+        ) : null}
+        {isComputerTurn && aiStatus === 'error' ? (
+          <div className={styles.retryRow}>
+            <Button onClick={onRetryComputerMove}>{text(language, 'retryComputerMove')}</Button>
+          </div>
         ) : null}
       </div>
     </div>
