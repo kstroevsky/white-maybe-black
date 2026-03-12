@@ -8,7 +8,7 @@ import {
   type TurnAction,
 } from '@/domain';
 import { evaluateState } from '@/ai/evaluation';
-import { orderMoves, type OrderedAction } from '@/ai/moveOrdering';
+import { orderMoves } from '@/ai/moveOrdering';
 import { AI_DIFFICULTY_PRESETS } from '@/ai/presets';
 import type { AiDifficultyPreset, AiSearchResult, ChooseComputerActionRequest } from '@/ai/types';
 
@@ -23,10 +23,7 @@ type TranspositionEntry = {
 
 // A hard cap keeps worker memory usage predictable in the browser.
 const TRANSPOSITION_LIMIT = 50_000;
-
-function getOpponent(player: Player): Player {
-  return player === 'white' ? 'black' : 'white';
-}
+const AI_SEARCH_TIMEOUT = 'AI_SEARCH_TIMEOUT';
 
 function actionKey(action: TurnAction): string {
   switch (action.type) {
@@ -36,6 +33,20 @@ function actionKey(action: TurnAction): string {
       return `${action.type}:${action.source}:${action.path.join('>')}`;
     default:
       return `${action.type}:${action.source}:${action.target}`;
+  }
+}
+
+function createSearchTimeoutError(): Error {
+  return new Error(AI_SEARCH_TIMEOUT);
+}
+
+function isSearchTimeout(error: unknown): boolean {
+  return error instanceof Error && error.message === AI_SEARCH_TIMEOUT;
+}
+
+function throwIfTimedOut(now: () => number, deadline: number): void {
+  if (now() >= deadline) {
+    throw createSearchTimeoutError();
   }
 }
 
@@ -61,6 +72,20 @@ function selectCandidateActions(
     .slice(0, maxCount);
 
   return candidates[Math.floor(random() * candidates.length)]?.action ?? best.action;
+}
+
+function sortRankedActions(
+  ranked: Array<{ action: TurnAction; score: number }>,
+): Array<{ action: TurnAction; score: number }> {
+  ranked.sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+
+    return actionKey(left.action).localeCompare(actionKey(right.action));
+  });
+
+  return ranked;
 }
 
 /** Checks whether the side to move can end the game immediately from the current node. */
@@ -107,9 +132,7 @@ function negamax(
   currentDepth: number,
   context: SearchContext,
 ): number {
-  if (context.now() >= context.deadline) {
-    throw new Error('AI_SEARCH_TIMEOUT');
-  }
+  throwIfTimedOut(context.now, context.deadline);
 
   const originalAlpha = alpha;
   const tableKey = makeTableKey(state);
@@ -147,8 +170,12 @@ function negamax(
     context.rootPlayer,
     context.ruleConfig,
     context.preset,
-    context.pvMoveByDepth.get(currentDepth),
-    cached?.bestAction,
+    {
+      deadline: context.deadline,
+      now: context.now,
+      pvMove: context.pvMoveByDepth.get(currentDepth),
+      ttMove: cached?.bestAction,
+    },
   );
 
   if (!orderedMoves.length) {
@@ -221,35 +248,68 @@ export function chooseComputerAction({
   const startedAt = now();
   const deadline = startedAt + preset.timeBudgetMs;
   const legalActions = getLegalActions(state, ruleConfig);
+  let fallbackScore: number | null = null;
+
+  function getFallbackScore(): number {
+    fallbackScore ??= evaluateState(state, state.currentPlayer, ruleConfig);
+    return fallbackScore;
+  }
 
   // No legal moves means the reducer already produced a terminal or pass-resolved state.
   if (!legalActions.length) {
     return {
       action: null,
       completedDepth: 0,
+      completedRootMoves: 0,
       elapsedMs: 0,
       evaluatedNodes: 0,
-      score: evaluateState(state, state.currentPlayer, ruleConfig),
+      fallbackKind: 'none',
+      score: getFallbackScore(),
+      timedOut: false,
     };
   }
 
   // Fast-path direct wins before spending time on deeper search.
-  for (const action of legalActions) {
-    const nextState = advanceEngineState(state, action, ruleConfig);
+  try {
+    for (const action of legalActions) {
+      throwIfTimedOut(now, deadline);
 
-    if (
-      nextState.status === 'gameOver' &&
-      (nextState.victory.type === 'homeField' || nextState.victory.type === 'sixStacks') &&
-      nextState.victory.winner === state.currentPlayer
-    ) {
-      return {
-        action,
-        completedDepth: 1,
-        elapsedMs: now() - startedAt,
-        evaluatedNodes: 1,
-        score: 1_000_000,
-      };
+      const nextState = advanceEngineState(state, action, ruleConfig);
+
+      throwIfTimedOut(now, deadline);
+
+      if (
+        nextState.status === 'gameOver' &&
+        (nextState.victory.type === 'homeField' || nextState.victory.type === 'sixStacks') &&
+        nextState.victory.winner === state.currentPlayer
+      ) {
+        return {
+          action,
+          completedDepth: 1,
+          completedRootMoves: 1,
+          elapsedMs: now() - startedAt,
+          evaluatedNodes: 1,
+          fallbackKind: 'none',
+          score: 1_000_000,
+          timedOut: false,
+        };
+      }
     }
+  } catch (error) {
+    if (!isSearchTimeout(error)) {
+      throw error;
+    }
+
+    return {
+      action: legalActions[0],
+      completedDepth: 0,
+      completedRootMoves: 0,
+      elapsedMs: now() - startedAt,
+      evaluatedNodes: 0,
+      fallbackKind: 'legalOrder',
+      score: getFallbackScore(),
+      timedOut: true,
+    };
   }
 
   const context: SearchContext = {
@@ -264,24 +324,37 @@ export function chooseComputerAction({
   };
 
   let completedDepth = 0;
+  let completedRootMoves = 0;
   let bestAction = legalActions[0];
-  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestScore = 0;
+  let fallbackKind: AiSearchResult['fallbackKind'] = 'none';
+  let timedOut = false;
 
   // Iterative deepening keeps a stable best-so-far answer if the time budget expires mid-search.
   for (let depth = 1; depth <= preset.maxDepth; depth += 1) {
     const ranked: Array<{ action: TurnAction; score: number }> = [];
 
     try {
+      throwIfTimedOut(now, deadline);
+
       const orderedMoves = orderMoves(
         state,
         context.rootPlayer,
         ruleConfig,
         preset,
-        context.pvMoveByDepth.get(0),
-        context.table.get(makeTableKey(state))?.bestAction,
+        {
+          actions: legalActions,
+          deadline,
+          includeAllQuietMoves: true,
+          now,
+          pvMove: context.pvMoveByDepth.get(0),
+          ttMove: context.table.get(makeTableKey(state))?.bestAction,
+        },
       );
 
       for (const entry of orderedMoves) {
+        throwIfTimedOut(now, deadline);
+
         const score = -negamax(
           entry.nextState,
           depth - 1,
@@ -298,7 +371,25 @@ export function chooseComputerAction({
         });
       }
     } catch (error) {
-      if (error instanceof Error && error.message === 'AI_SEARCH_TIMEOUT') {
+      if (isSearchTimeout(error)) {
+        timedOut = true;
+
+        if (ranked.length > 0) {
+          const partialRanked = sortRankedActions(ranked);
+          const partialBest = partialRanked[0];
+
+          bestAction = partialBest.action;
+          bestScore = partialBest.score;
+          completedRootMoves = partialRanked.length;
+          fallbackKind = 'partialCurrentDepth';
+        } else if (completedDepth > 0) {
+          fallbackKind = 'previousDepth';
+        } else {
+          fallbackKind = 'legalOrder';
+          bestScore = getFallbackScore();
+          completedRootMoves = 0;
+        }
+
         break;
       }
 
@@ -306,13 +397,14 @@ export function chooseComputerAction({
     }
 
     // Rank the current iteration before deciding whether to continue deeper.
-    ranked.sort((left, right) => right.score - left.score);
+    sortRankedActions(ranked);
 
     if (!ranked.length) {
       break;
     }
 
     completedDepth = depth;
+    completedRootMoves = ranked.length;
     bestScore = ranked[0].score;
     bestAction = selectCandidateActions(
       ranked,
@@ -320,6 +412,7 @@ export function chooseComputerAction({
       preset.randomThreshold,
       random,
     );
+    fallbackKind = 'none';
 
     context.pvMoveByDepth.set(0, bestAction);
   }
@@ -327,8 +420,11 @@ export function chooseComputerAction({
   return {
     action: bestAction,
     completedDepth,
+    completedRootMoves,
     elapsedMs: now() - startedAt,
     evaluatedNodes: context.evaluatedNodes,
+    fallbackKind,
     score: bestScore,
+    timedOut,
   };
 }

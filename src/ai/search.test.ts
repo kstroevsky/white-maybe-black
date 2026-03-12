@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { AI_DIFFICULTY_PRESETS, chooseComputerAction } from '@/ai';
+import { AI_DIFFICULTY_PRESETS, chooseComputerAction, orderMoves } from '@/ai';
 import { applyAction, createInitialState, getLegalActions } from '@/domain';
 import { createEmptyBoard } from '@/domain/model/board';
 import { createCoord } from '@/domain/model/coordinates';
 import type { Coord, GameState, TurnAction } from '@/domain/model/types';
+import { validateGameState } from '@/domain/validators/stateValidators';
 import { checker, gameStateWithBoard, resetFactoryIds, withConfig } from '@/test/factories';
 
 function actionKey(action: TurnAction | null): string {
@@ -29,6 +30,24 @@ function createTickingClock(step = 0.01): () => number {
     const value = tick;
     tick += step;
     return value;
+  };
+}
+
+function createTimeoutClock(stableCalls: number, expiredValue: number): () => number {
+  let calls = 0;
+
+  return () => {
+    calls += 1;
+    return calls <= stableCalls ? 0 : expiredValue;
+  };
+}
+
+function createSeededRandom(seed = 1): () => number {
+  let current = seed >>> 0;
+
+  return () => {
+    current = (current * 1_664_525 + 1_013_904_223) >>> 0;
+    return current / 0x1_0000_0000;
   };
 }
 
@@ -179,6 +198,7 @@ describe('computer opponent search', () => {
       const legalActions = getLegalActions(state, withConfig());
 
       expect(result.action).not.toBeNull();
+      expect(result.timedOut).toBe(false);
       expect(legalActions.map(actionKey)).toContain(actionKey(result.action));
     }
   });
@@ -205,11 +225,17 @@ describe('computer opponent search', () => {
       source: 'C3',
       target: 'C4',
     });
+    expect(homeFieldResult.completedRootMoves).toBe(1);
+    expect(homeFieldResult.fallbackKind).toBe('none');
+    expect(homeFieldResult.timedOut).toBe(false);
     expect(sixStackResult.action).toEqual({
       type: 'climbOne',
       source: 'A5',
       target: 'A6',
     });
+    expect(sixStackResult.completedRootMoves).toBe(1);
+    expect(sixStackResult.fallbackKind).toBe('none');
+    expect(sixStackResult.timedOut).toBe(false);
   });
 
   it('blocks the opponent from winning on the next move', () => {
@@ -238,4 +264,127 @@ describe('computer opponent search', () => {
 
     expect(opponentWinsImmediately).toBe(false);
   });
+
+  it('searches every legal root move even when quiet-move trimming is active below the root', () => {
+    const config = withConfig();
+    const state = createInitialState(config);
+    const legalActions = getLegalActions(state, config);
+    const originalHardPreset = { ...AI_DIFFICULTY_PRESETS.hard };
+    let result;
+
+    AI_DIFFICULTY_PRESETS.hard.maxDepth = 1;
+    AI_DIFFICULTY_PRESETS.hard.timeBudgetMs = 10_000;
+
+    try {
+      result = chooseComputerAction({
+        difficulty: 'hard',
+        now: createTickingClock(0.01),
+        random: () => 0,
+        ruleConfig: config,
+        state,
+      });
+    } finally {
+      Object.assign(AI_DIFFICULTY_PRESETS.hard, originalHardPreset);
+    }
+
+    expect(legalActions.length).toBeGreaterThan(AI_DIFFICULTY_PRESETS.hard.quietMoveLimit);
+    expect(result.completedDepth).toBe(1);
+    expect(result.completedRootMoves).toBe(legalActions.length);
+    expect(result.fallbackKind).toBe('none');
+    expect(result.timedOut).toBe(false);
+  }, 15_000);
+
+  it('falls back to partial current-depth search work instead of blind legal-order fallback on timeout', () => {
+    const config = withConfig();
+    const state = createOpponentThreatState();
+    const legalActions = getLegalActions(state, config);
+    const orderedRootMoves = orderMoves(
+      state,
+      state.currentPlayer,
+      config,
+      AI_DIFFICULTY_PRESETS.hard,
+      {
+        actions: legalActions,
+        includeAllQuietMoves: true,
+      },
+    );
+    const originalHardPreset = { ...AI_DIFFICULTY_PRESETS.hard };
+    let result;
+
+    AI_DIFFICULTY_PRESETS.hard.maxDepth = 2;
+    AI_DIFFICULTY_PRESETS.hard.timeBudgetMs = 10_000;
+
+    try {
+      result = chooseComputerAction({
+        difficulty: 'hard',
+        now: createTimeoutClock(220, 20_000),
+        random: () => 0,
+        ruleConfig: config,
+        state,
+      });
+    } finally {
+      Object.assign(AI_DIFFICULTY_PRESETS.hard, originalHardPreset);
+    }
+
+    expect(actionKey(orderedRootMoves[0]?.action ?? null)).not.toBe(actionKey(legalActions[0] ?? null));
+    expect(result.timedOut).toBe(true);
+    expect(result.fallbackKind).toBe('partialCurrentDepth');
+    expect(result.completedRootMoves).toBeGreaterThan(0);
+    expect(actionKey(result.action)).not.toBe(actionKey(legalActions[0] ?? null));
+  });
 });
+
+function runAiSoakPlayout(
+  difficulty: keyof typeof AI_DIFFICULTY_PRESETS,
+  turnLimit: number,
+  stableCalls: number,
+): void {
+  const config = withConfig({ drawRule: 'none' });
+  const random = createSeededRandom(turnLimit + stableCalls * 100);
+  let state = createInitialState(config);
+
+  for (let turn = 0; turn < turnLimit; turn += 1) {
+    const legalActions = getLegalActions(state, config);
+
+    expect(legalActions.length).toBeGreaterThan(0);
+
+    const startedAt = performance.now();
+    const result = chooseComputerAction({
+      difficulty,
+      now: createTimeoutClock(stableCalls, 100_000),
+      random,
+      ruleConfig: config,
+      state,
+    });
+    const wallTimeMs = performance.now() - startedAt;
+
+    expect(wallTimeMs).toBeLessThanOrEqual(
+      AI_DIFFICULTY_PRESETS[difficulty].timeBudgetMs + 250,
+    );
+    expect(result.action).not.toBeNull();
+    expect(legalActions.map(actionKey)).toContain(actionKey(result.action));
+
+    state = applyAction(state, result.action as TurnAction, config);
+
+    const validation = validateGameState(state);
+
+    expect(validation.valid).toBe(true);
+    expect(state.pendingJump === null || state.pendingJump.visitedStateKeys.length > 0).toBe(true);
+
+    if (state.status === 'gameOver') {
+      state = createInitialState(config);
+    }
+  }
+}
+
+for (const difficulty of ['easy', 'medium', 'hard'] as const) {
+  const stableCalls = difficulty === 'easy' ? 8 : difficulty === 'medium' ? 10 : 12;
+
+  it(`survives a 200-turn AI-vs-AI soak on ${difficulty}`, () => {
+    runAiSoakPlayout(difficulty, 200, stableCalls);
+  }, 20_000);
+
+  it(`survives a 500-turn AI-vs-AI soak on ${difficulty}`, () => {
+    runAiSoakPlayout(difficulty, 500, stableCalls);
+  }, 35_000);
+}

@@ -1,53 +1,65 @@
 {
   "chunkSizes": {
     "entryScripts": [
-      "index-CToIMv2x.js"
+      "index-DnbDDfyB.js"
     ],
     "jsAssets": [
       {
-        "assetName": "index-CToIMv2x.js",
-        "bytes": 247644
+        "assetName": "index-DnbDDfyB.js",
+        "bytes": 258586
       },
       {
-        "assetName": "index-D09F2mDs.js",
+        "assetName": "index-B_ojuBh-.js",
         "bytes": 32209
       },
       {
-        "assetName": "ai.worker-CvQMaBpM.js",
-        "bytes": 18334
+        "assetName": "ai.worker-BPSS9mE4.js",
+        "bytes": 19557
       },
       {
-        "assetName": "index-q4T6w0M8.js",
-        "bytes": 17799
+        "assetName": "index-DEVMhi-x.js",
+        "bytes": 16439
       },
       {
-        "assetName": "GlossaryTooltip-8q8DL6wL.js",
-        "bytes": 10057
+        "assetName": "index-CDcMm8cj.js",
+        "bytes": 3125
       },
       {
-        "assetName": "index-BWO5Zwqk.js",
-        "bytes": 3135
+        "assetName": "MoveInputModal-DZtZYnOI.js",
+        "bytes": 1720
       },
       {
-        "assetName": "MoveInputModal-BwSvBahu.js",
-        "bytes": 1763
+        "assetName": "GameResultModal-DzMyiJrR.js",
+        "bytes": 1374
+      },
+      {
+        "assetName": "TurnOverlay-CiLNeHEd.js",
+        "bytes": 739
+      },
+      {
+        "assetName": "GlossaryTooltipDialog-E9PaskFJ.js",
+        "bytes": 592
+      },
+      {
+        "assetName": "Panel-DlH5QJVK.js",
+        "bytes": 221
       }
     ],
     "lazyChunkSmoke": {
       "moveInputModal": true,
-      "gameResultModal": false,
-      "glossaryTooltipDialog": false,
-      "turnOverlay": false
+      "gameResultModal": true,
+      "glossaryTooltipDialog": true,
+      "turnOverlay": true
     },
-    "totalJsBytes": 330941
+    "totalJsBytes": 334562
   },
   "desktop": {
     "load": {
-      "domContentLoadedMs": 31.2,
-      "firstContentfulPaintMs": 72,
-      "firstPaintMs": 72,
-      "largestContentfulPaintMs": 72,
-      "loadEventMs": 31.6,
+      "domContentLoadedMs": 29.1,
+      "firstContentfulPaintMs": 88,
+      "firstPaintMs": 88,
+      "largestContentfulPaintMs": 88,
+      "loadEventMs": 29.5,
       "longTaskCount": 0,
       "longTaskMaxMs": 0,
       "totalLayoutShift": 0
@@ -55,9 +67,9 @@
     "render": {
       "initial": {
         "buttons": 49,
-        "checkerNodes": 0,
+        "checkerNodes": 36,
         "dialogs": 0,
-        "elements": 399,
+        "elements": 405,
         "historyItems": 0
       },
       "scroll": {
@@ -69,21 +81,21 @@
     },
     "ui": {
       "chooseAction": {
-        "elapsedMs": 56.5,
+        "elapsedMs": 56,
         "layoutShiftScore": 0,
         "longTaskCount": 0,
         "maxLongTaskMs": 0,
         "totalLongTaskMs": 0
       },
       "commitMove": {
-        "elapsedMs": 58.4,
+        "elapsedMs": 40.8,
         "layoutShiftScore": 0,
         "longTaskCount": 0,
         "maxLongTaskMs": 0,
         "totalLongTaskMs": 0
       },
       "openMoveDialog": {
-        "elapsedMs": 374.3,
+        "elapsedMs": 395.9,
         "layoutShiftScore": 0,
         "longTaskCount": 0,
         "maxLongTaskMs": 0,
@@ -96,213 +108,213 @@
     }
   },
   "domain": {
-    "generatedAt": "2026-03-12T14:07:06.186Z",
+    "generatedAt": "2026-03-12T15:05:19.185Z",
     "domain": {
       "hashPosition": {
-        "avgMs": 0.0054,
+        "avgMs": 0.0053,
         "iterations": 6000,
-        "totalMs": 32.33
+        "totalMs": 31.72
       },
       "getLegalActions": {
-        "avgMs": 0.2193,
+        "avgMs": 0.2075,
         "iterations": 750,
-        "totalMs": 164.46
+        "totalMs": 155.66
       },
       "getLegalActionsForCell": {
         "avgMs": 0.0002,
         "iterations": 1500,
-        "totalMs": 0.28
+        "totalMs": 0.3
       },
       "selectableCoordsScan": {
-        "avgMs": 0.1954,
+        "avgMs": 0.1997,
         "iterations": 280,
-        "totalMs": 54.71
+        "totalMs": 55.91
       },
       "hasLegalActionCheck": {
         "avgMs": 0.0107,
         "iterations": 420,
-        "totalMs": 4.5
+        "totalMs": 4.51
       },
       "advanceEngineState": {
-        "avgMs": 0.2318,
+        "avgMs": 0.232,
         "iterations": 700,
-        "totalMs": 162.29
+        "totalMs": 162.38
       }
     },
     "comparisons": {
-      "cellActionVsFullActionSpeedup": 1096.5,
-      "hashVsFullActionSpeedup": 40.61
+      "cellActionVsFullActionSpeedup": 1037.5,
+      "hashVsFullActionSpeedup": 39.15
     },
     "ai": {
       "easy": {
-        "avgWallTimeMs": 105.72,
+        "avgWallTimeMs": 103.27,
         "states": [
           {
-            "action": "climbOne:A4:A3",
+            "action": "climbOne:B4:A3",
             "completedDepth": 0,
-            "evaluatedNodes": 1,
+            "evaluatedNodes": 3,
             "label": "afterOpening",
-            "reportedElapsedMs": 134.83,
+            "reportedElapsedMs": 142.49,
             "timeBudgetMs": 120,
-            "wallTimeMs": 134.99
+            "wallTimeMs": 142.66
           },
           {
-            "action": "climbOne:A1:B1",
+            "action": "climbOne:B3:A4",
             "completedDepth": 0,
-            "evaluatedNodes": 1,
+            "evaluatedNodes": 3,
             "label": "initialState",
-            "reportedElapsedMs": 157.25,
+            "reportedElapsedMs": 140.25,
             "timeBudgetMs": 120,
-            "wallTimeMs": 157.26
+            "wallTimeMs": 140.26
           },
           {
             "action": "jumpSequence:C3:E5",
             "completedDepth": 2,
             "evaluatedNodes": 3,
             "label": "jumpContinuation",
-            "reportedElapsedMs": 3.25,
+            "reportedElapsedMs": 2.56,
             "timeBudgetMs": 120,
-            "wallTimeMs": 3.25
+            "wallTimeMs": 2.56
           },
           {
-            "action": "climbOne:B2:A1",
+            "action": "manualUnfreeze:A4",
             "completedDepth": 0,
-            "evaluatedNodes": 240,
+            "evaluatedNodes": 449,
             "label": "threatState",
-            "reportedElapsedMs": 127.37,
+            "reportedElapsedMs": 127.6,
             "timeBudgetMs": 120,
-            "wallTimeMs": 127.37
+            "wallTimeMs": 127.61
           }
         ]
       },
       "medium": {
-        "avgWallTimeMs": 314.92,
+        "avgWallTimeMs": 346.53,
         "states": [
           {
-            "action": "climbOne:A4:A3",
+            "action": "climbOne:B4:A3",
             "completedDepth": 0,
-            "evaluatedNodes": 11,
+            "evaluatedNodes": 12,
             "label": "afterOpening",
-            "reportedElapsedMs": 420.28,
+            "reportedElapsedMs": 403.5,
             "timeBudgetMs": 400,
-            "wallTimeMs": 420.29
+            "wallTimeMs": 403.51
           },
           {
-            "action": "climbOne:A1:B1",
+            "action": "climbOne:B3:A4",
             "completedDepth": 0,
-            "evaluatedNodes": 11,
+            "evaluatedNodes": 12,
             "label": "initialState",
-            "reportedElapsedMs": 408.45,
+            "reportedElapsedMs": 533.09,
             "timeBudgetMs": 400,
-            "wallTimeMs": 408.47
+            "wallTimeMs": 533.09
           },
           {
             "action": "jumpSequence:C3:E5",
             "completedDepth": 4,
-            "evaluatedNodes": 61,
+            "evaluatedNodes": 59,
             "label": "jumpContinuation",
-            "reportedElapsedMs": 25.02,
+            "reportedElapsedMs": 49.25,
             "timeBudgetMs": 400,
-            "wallTimeMs": 25.04
+            "wallTimeMs": 49.26
           },
           {
             "action": "climbOne:B2:A1",
             "completedDepth": 1,
-            "evaluatedNodes": 1058,
+            "evaluatedNodes": 1086,
             "label": "threatState",
-            "reportedElapsedMs": 405.87,
+            "reportedElapsedMs": 400.25,
             "timeBudgetMs": 400,
-            "wallTimeMs": 405.88
+            "wallTimeMs": 400.26
           }
         ]
       },
       "hard": {
-        "avgWallTimeMs": 955.62,
+        "avgWallTimeMs": 959.13,
         "states": [
           {
-            "action": "climbOne:A4:A3",
+            "action": "climbOne:B4:B5",
             "completedDepth": 0,
-            "evaluatedNodes": 41,
+            "evaluatedNodes": 39,
             "label": "afterOpening",
-            "reportedElapsedMs": 1211.12,
+            "reportedElapsedMs": 1226.63,
             "timeBudgetMs": 1200,
-            "wallTimeMs": 1211.13
+            "wallTimeMs": 1226.63
           },
           {
-            "action": "climbOne:A1:B1",
+            "action": "climbOne:B3:A4",
             "completedDepth": 0,
             "evaluatedNodes": 42,
             "label": "initialState",
-            "reportedElapsedMs": 1206.43,
+            "reportedElapsedMs": 1215.79,
             "timeBudgetMs": 1200,
-            "wallTimeMs": 1206.44
+            "wallTimeMs": 1215.8
           },
           {
             "action": "jumpSequence:C3:E5",
             "completedDepth": 6,
-            "evaluatedNodes": 368,
+            "evaluatedNodes": 406,
             "label": "jumpContinuation",
-            "reportedElapsedMs": 201.28,
+            "reportedElapsedMs": 191.73,
             "timeBudgetMs": 1200,
-            "wallTimeMs": 201.29
+            "wallTimeMs": 191.74
           },
           {
             "action": "climbOne:B2:A1",
             "completedDepth": 2,
-            "evaluatedNodes": 1366,
+            "evaluatedNodes": 1365,
             "label": "threatState",
-            "reportedElapsedMs": 1203.59,
+            "reportedElapsedMs": 1202.35,
             "timeBudgetMs": 1200,
-            "wallTimeMs": 1203.6
+            "wallTimeMs": 1202.36
           }
         ]
       }
     }
   },
-  "generatedAt": "2026-03-12T14:07:17.913Z",
+  "generatedAt": "2026-03-12T15:05:31.107Z",
   "mobile": {
     "load": {
-      "domContentLoadedMs": 64.9,
-      "firstContentfulPaintMs": 96,
-      "firstPaintMs": 44,
-      "largestContentfulPaintMs": 96,
-      "loadEventMs": 65,
+      "domContentLoadedMs": 25.7,
+      "firstContentfulPaintMs": 48,
+      "firstPaintMs": 32,
+      "largestContentfulPaintMs": 48,
+      "loadEventMs": 25.9,
       "longTaskCount": 0,
       "longTaskMaxMs": 0,
       "totalLayoutShift": 0
     },
     "render": {
       "initial": {
-        "buttons": 46,
-        "checkerNodes": 0,
+        "buttons": 45,
+        "checkerNodes": 36,
         "dialogs": 0,
-        "elements": 366,
+        "elements": 335,
         "historyItems": 0
       },
       "scroll": {
-        "bodyClientHeight": 844,
-        "bodyScrollHeight": 844,
-        "contentOverflowY": "hidden",
-        "documentOverflowY": "hidden"
+        "bodyClientHeight": 1026,
+        "bodyScrollHeight": 1026,
+        "contentOverflowY": "visible",
+        "documentOverflowY": "visible"
       }
     },
     "ui": {
       "chooseAction": {
-        "elapsedMs": 57.5,
-        "layoutShiftScore": 0,
-        "longTaskCount": 0,
-        "maxLongTaskMs": 0,
-        "totalLongTaskMs": 0
-      },
-      "commitMove": {
         "elapsedMs": 40.9,
         "layoutShiftScore": 0,
         "longTaskCount": 0,
         "maxLongTaskMs": 0,
         "totalLongTaskMs": 0
       },
+      "commitMove": {
+        "elapsedMs": 40.5,
+        "layoutShiftScore": 0,
+        "longTaskCount": 0,
+        "maxLongTaskMs": 0,
+        "totalLongTaskMs": 0
+      },
       "openMoveDialog": {
-        "elapsedMs": 367.4,
+        "elapsedMs": 339.2,
         "layoutShiftScore": 0,
         "longTaskCount": 0,
         "maxLongTaskMs": 0,
@@ -315,14 +327,14 @@
     },
     "compactTabs": {
       "toHistory": {
-        "elapsedMs": 55.3,
+        "elapsedMs": 57.6,
         "layoutShiftScore": 0,
         "longTaskCount": 0,
         "maxLongTaskMs": 0,
         "totalLongTaskMs": 0
       },
       "toInfo": {
-        "elapsedMs": 38.2,
+        "elapsedMs": 55.9,
         "layoutShiftScore": 0,
         "longTaskCount": 0,
         "maxLongTaskMs": 0,
@@ -332,21 +344,21 @@
     "ai": {
       "black": {
         "easy": {
-          "elapsedMs": 211.1,
+          "elapsedMs": 191.5,
           "layoutShiftScore": 0,
           "longTaskCount": 0,
           "maxLongTaskMs": 0,
           "totalLongTaskMs": 0
         },
         "medium": {
-          "elapsedMs": 493.8,
+          "elapsedMs": 487.8,
           "layoutShiftScore": 0,
           "longTaskCount": 0,
           "maxLongTaskMs": 0,
           "totalLongTaskMs": 0
         },
         "hard": {
-          "elapsedMs": 1286,
+          "elapsedMs": 1280.3,
           "layoutShiftScore": 0,
           "longTaskCount": 0,
           "maxLongTaskMs": 0,
@@ -355,21 +367,21 @@
       },
       "white": {
         "easy": {
-          "elapsedMs": 184.7,
+          "elapsedMs": 193.2,
           "layoutShiftScore": 0,
           "longTaskCount": 0,
           "maxLongTaskMs": 0,
           "totalLongTaskMs": 0
         },
         "medium": {
-          "elapsedMs": 457.7,
+          "elapsedMs": 485.9,
           "layoutShiftScore": 0,
           "longTaskCount": 0,
           "maxLongTaskMs": 0,
           "totalLongTaskMs": 0
         },
         "hard": {
-          "elapsedMs": 1249.4,
+          "elapsedMs": 1276.8,
           "layoutShiftScore": 0,
           "longTaskCount": 0,
           "maxLongTaskMs": 0,

@@ -1,162 +1,162 @@
 {
-  "generatedAt": "2026-03-12T14:07:06.186Z",
+  "generatedAt": "2026-03-12T15:05:19.185Z",
   "domain": {
     "hashPosition": {
-      "avgMs": 0.0054,
+      "avgMs": 0.0053,
       "iterations": 6000,
-      "totalMs": 32.33
+      "totalMs": 31.72
     },
     "getLegalActions": {
-      "avgMs": 0.2193,
+      "avgMs": 0.2075,
       "iterations": 750,
-      "totalMs": 164.46
+      "totalMs": 155.66
     },
     "getLegalActionsForCell": {
       "avgMs": 0.0002,
       "iterations": 1500,
-      "totalMs": 0.28
+      "totalMs": 0.3
     },
     "selectableCoordsScan": {
-      "avgMs": 0.1954,
+      "avgMs": 0.1997,
       "iterations": 280,
-      "totalMs": 54.71
+      "totalMs": 55.91
     },
     "hasLegalActionCheck": {
       "avgMs": 0.0107,
       "iterations": 420,
-      "totalMs": 4.5
+      "totalMs": 4.51
     },
     "advanceEngineState": {
-      "avgMs": 0.2318,
+      "avgMs": 0.232,
       "iterations": 700,
-      "totalMs": 162.29
+      "totalMs": 162.38
     }
   },
   "comparisons": {
-    "cellActionVsFullActionSpeedup": 1096.5,
-    "hashVsFullActionSpeedup": 40.61
+    "cellActionVsFullActionSpeedup": 1037.5,
+    "hashVsFullActionSpeedup": 39.15
   },
   "ai": {
     "easy": {
-      "avgWallTimeMs": 105.72,
+      "avgWallTimeMs": 103.27,
       "states": [
         {
-          "action": "climbOne:A4:A3",
+          "action": "climbOne:B4:A3",
           "completedDepth": 0,
-          "evaluatedNodes": 1,
+          "evaluatedNodes": 3,
           "label": "afterOpening",
-          "reportedElapsedMs": 134.83,
+          "reportedElapsedMs": 142.49,
           "timeBudgetMs": 120,
-          "wallTimeMs": 134.99
+          "wallTimeMs": 142.66
         },
         {
-          "action": "climbOne:A1:B1",
+          "action": "climbOne:B3:A4",
           "completedDepth": 0,
-          "evaluatedNodes": 1,
+          "evaluatedNodes": 3,
           "label": "initialState",
-          "reportedElapsedMs": 157.25,
+          "reportedElapsedMs": 140.25,
           "timeBudgetMs": 120,
-          "wallTimeMs": 157.26
+          "wallTimeMs": 140.26
         },
         {
           "action": "jumpSequence:C3:E5",
           "completedDepth": 2,
           "evaluatedNodes": 3,
           "label": "jumpContinuation",
-          "reportedElapsedMs": 3.25,
+          "reportedElapsedMs": 2.56,
           "timeBudgetMs": 120,
-          "wallTimeMs": 3.25
+          "wallTimeMs": 2.56
         },
         {
-          "action": "climbOne:B2:A1",
+          "action": "manualUnfreeze:A4",
           "completedDepth": 0,
-          "evaluatedNodes": 240,
+          "evaluatedNodes": 449,
           "label": "threatState",
-          "reportedElapsedMs": 127.37,
+          "reportedElapsedMs": 127.6,
           "timeBudgetMs": 120,
-          "wallTimeMs": 127.37
+          "wallTimeMs": 127.61
         }
       ]
     },
     "medium": {
-      "avgWallTimeMs": 314.92,
+      "avgWallTimeMs": 346.53,
       "states": [
         {
-          "action": "climbOne:A4:A3",
+          "action": "climbOne:B4:A3",
           "completedDepth": 0,
-          "evaluatedNodes": 11,
+          "evaluatedNodes": 12,
           "label": "afterOpening",
-          "reportedElapsedMs": 420.28,
+          "reportedElapsedMs": 403.5,
           "timeBudgetMs": 400,
-          "wallTimeMs": 420.29
+          "wallTimeMs": 403.51
         },
         {
-          "action": "climbOne:A1:B1",
+          "action": "climbOne:B3:A4",
           "completedDepth": 0,
-          "evaluatedNodes": 11,
+          "evaluatedNodes": 12,
           "label": "initialState",
-          "reportedElapsedMs": 408.45,
+          "reportedElapsedMs": 533.09,
           "timeBudgetMs": 400,
-          "wallTimeMs": 408.47
+          "wallTimeMs": 533.09
         },
         {
           "action": "jumpSequence:C3:E5",
           "completedDepth": 4,
-          "evaluatedNodes": 61,
+          "evaluatedNodes": 59,
           "label": "jumpContinuation",
-          "reportedElapsedMs": 25.02,
+          "reportedElapsedMs": 49.25,
           "timeBudgetMs": 400,
-          "wallTimeMs": 25.04
+          "wallTimeMs": 49.26
         },
         {
           "action": "climbOne:B2:A1",
           "completedDepth": 1,
-          "evaluatedNodes": 1058,
+          "evaluatedNodes": 1086,
           "label": "threatState",
-          "reportedElapsedMs": 405.87,
+          "reportedElapsedMs": 400.25,
           "timeBudgetMs": 400,
-          "wallTimeMs": 405.88
+          "wallTimeMs": 400.26
         }
       ]
     },
     "hard": {
-      "avgWallTimeMs": 955.62,
+      "avgWallTimeMs": 959.13,
       "states": [
         {
-          "action": "climbOne:A4:A3",
+          "action": "climbOne:B4:B5",
           "completedDepth": 0,
-          "evaluatedNodes": 41,
+          "evaluatedNodes": 39,
           "label": "afterOpening",
-          "reportedElapsedMs": 1211.12,
+          "reportedElapsedMs": 1226.63,
           "timeBudgetMs": 1200,
-          "wallTimeMs": 1211.13
+          "wallTimeMs": 1226.63
         },
         {
-          "action": "climbOne:A1:B1",
+          "action": "climbOne:B3:A4",
           "completedDepth": 0,
           "evaluatedNodes": 42,
           "label": "initialState",
-          "reportedElapsedMs": 1206.43,
+          "reportedElapsedMs": 1215.79,
           "timeBudgetMs": 1200,
-          "wallTimeMs": 1206.44
+          "wallTimeMs": 1215.8
         },
         {
           "action": "jumpSequence:C3:E5",
           "completedDepth": 6,
-          "evaluatedNodes": 368,
+          "evaluatedNodes": 406,
           "label": "jumpContinuation",
-          "reportedElapsedMs": 201.28,
+          "reportedElapsedMs": 191.73,
           "timeBudgetMs": 1200,
-          "wallTimeMs": 201.29
+          "wallTimeMs": 191.74
         },
         {
           "action": "climbOne:B2:A1",
           "completedDepth": 2,
-          "evaluatedNodes": 1366,
+          "evaluatedNodes": 1365,
           "label": "threatState",
-          "reportedElapsedMs": 1203.59,
+          "reportedElapsedMs": 1202.35,
           "timeBudgetMs": 1200,
-          "wallTimeMs": 1203.6
+          "wallTimeMs": 1202.36
         }
       ]
     }

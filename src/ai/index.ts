@@ -4,6 +4,7 @@ export { orderMoves } from '@/ai/moveOrdering';
 export { AI_DIFFICULTY_PRESETS } from '@/ai/presets';
 export { chooseComputerAction } from '@/ai/search';
 export type {
+  AiFallbackKind,
   AiDifficultyPreset,
   AiSearchResult,
   AiWorkerRequest,

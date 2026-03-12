@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AiSearchResult, AiWorkerRequest, AiWorkerResponse } from '@/ai';
 import { createGameStore } from '@/app/store/createGameStore';
@@ -44,36 +44,64 @@ class FakeAiWorker {
   onerror: ((event: ErrorEvent) => void) | null = null;
   onmessage: ((event: MessageEvent<AiWorkerResponse>) => void) | null = null;
   requests: AiWorkerRequest[] = [];
+  terminated = false;
 
   postMessage(message: AiWorkerRequest) {
     this.requests.push(message);
   }
 
-  reply(result: AiSearchResult): void {
-    const request = this.requests.at(-1);
-
-    if (!request || !this.onmessage) {
+  dispatch(requestId: number, result: AiSearchResult): void {
+    if (!this.onmessage) {
       return;
     }
 
     this.onmessage({
       data: {
-        requestId: request.requestId,
+        requestId,
         result,
         type: 'result',
       },
     } as MessageEvent<AiWorkerResponse>);
   }
 
+  reply(result: AiSearchResult): void {
+    const request = this.requests.at(-1);
+
+    if (!request) {
+      return;
+    }
+
+    this.dispatch(request.requestId, result);
+  }
+
   terminate() {
+    this.terminated = true;
     this.onmessage = null;
     this.onerror = null;
   }
 }
 
+function createAiResult(overrides: Partial<AiSearchResult> = {}): AiSearchResult {
+  return {
+    action: null,
+    completedDepth: 1,
+    completedRootMoves: 1,
+    elapsedMs: 0,
+    evaluatedNodes: 1,
+    fallbackKind: 'none',
+    score: 10,
+    timedOut: false,
+    ...overrides,
+  };
+}
+
 describe('createGameStore', () => {
   beforeEach(() => {
     resetFactoryIds();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('uses updated default rule toggles and pass-device preference in a fresh store', () => {
@@ -521,13 +549,11 @@ describe('createGameStore', () => {
       return;
     }
 
-    worker.reply({
-      action: aiAction,
-      completedDepth: 1,
-      elapsedMs: 0,
-      evaluatedNodes: 1,
-      score: 10,
-    });
+    worker.reply(
+      createAiResult({
+        action: aiAction,
+      }),
+    );
 
     const humanSource = store.getState().selectableCoords[0];
     expect(store.getState().interaction.type).toBe('idle');
@@ -563,13 +589,11 @@ describe('createGameStore', () => {
 
     const aiAction = getLegalActions(store.getState().gameState, store.getState().ruleConfig)[0];
 
-    worker.reply({
-      action: aiAction,
-      completedDepth: 1,
-      elapsedMs: 0,
-      evaluatedNodes: 1,
-      score: 10,
-    });
+    worker.reply(
+      createAiResult({
+        action: aiAction,
+      }),
+    );
 
     expect(store.getState().historyCursor).toBeGreaterThanOrEqual(2);
     expect(store.getState().gameState.currentPlayer).toBe('white');
@@ -624,5 +648,102 @@ describe('createGameStore', () => {
 
     expect(rewoundWorker.requests).toHaveLength(0);
     expect(rewoundStore.getState().historyCursor).toBe(0);
+  });
+
+  it('recovers from a hung computer worker via the watchdog timeout', () => {
+    vi.useFakeTimers();
+
+    const workers: FakeAiWorker[] = [];
+    const store = createGameStore({
+      createAiWorker: () => {
+        const worker = new FakeAiWorker();
+
+        workers.push(worker);
+        return worker;
+      },
+      storage: undefined,
+    });
+
+    store.getState().startNewGame({
+      opponentMode: 'computer',
+      humanPlayer: 'black',
+      aiDifficulty: 'easy',
+    });
+
+    expect(store.getState().aiStatus).toBe('thinking');
+    expect(workers).toHaveLength(1);
+
+    vi.advanceTimersByTime(371);
+
+    expect(workers[0]?.terminated).toBe(true);
+    expect(store.getState().aiStatus).toBe('error');
+    expect(store.getState().aiError).toBe('Computer move timed out.');
+    expect(store.getState().pendingAiRequestId).toBeNull();
+
+    store.getState().retryComputerMove();
+
+    expect(store.getState().aiStatus).toBe('thinking');
+    expect(workers).toHaveLength(2);
+    expect(workers[1]?.requests).toHaveLength(1);
+  });
+
+  it('ignores stale AI replies after restarting the worker', () => {
+    vi.useFakeTimers();
+
+    const workers: FakeAiWorker[] = [];
+    const store = createGameStore({
+      createAiWorker: () => {
+        const worker = new FakeAiWorker();
+
+        workers.push(worker);
+        return worker;
+      },
+      storage: undefined,
+    });
+
+    store.getState().startNewGame({
+      opponentMode: 'computer',
+      humanPlayer: 'black',
+      aiDifficulty: 'easy',
+    });
+
+    const firstWorker = workers[0];
+    const staleRequestId = firstWorker?.requests[0]?.requestId;
+
+    expect(staleRequestId).toBe(1);
+
+    vi.advanceTimersByTime(371);
+    store.getState().retryComputerMove();
+
+    const secondWorker = workers[1];
+    const freshRequestId = secondWorker?.requests[0]?.requestId;
+    const currentState = store.getState().gameState;
+    const legalAction = getLegalActions(currentState, store.getState().ruleConfig)[0];
+
+    expect(freshRequestId).toBe(2);
+    expect(legalAction).toBeDefined();
+    if (!secondWorker || !legalAction) {
+      return;
+    }
+
+    secondWorker.dispatch(
+      staleRequestId as number,
+      createAiResult({
+        action: legalAction,
+      }),
+    );
+
+    expect(store.getState().aiStatus).toBe('thinking');
+    expect(store.getState().gameState.history).toHaveLength(0);
+
+    secondWorker.dispatch(
+      freshRequestId as number,
+      createAiResult({
+        action: legalAction,
+      }),
+    );
+
+    expect(store.getState().aiStatus).toBe('idle');
+    expect(store.getState().gameState.history).toHaveLength(1);
   });
 });

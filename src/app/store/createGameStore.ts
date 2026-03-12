@@ -1,6 +1,11 @@
 import { createStore } from 'zustand/vanilla';
 
-import type { AiSearchResult, AiWorkerRequest, AiWorkerResponse } from '@/ai';
+import {
+  AI_DIFFICULTY_PRESETS,
+  type AiSearchResult,
+  type AiWorkerRequest,
+  type AiWorkerResponse,
+} from '@/ai';
 import {
   applyAction,
   buildTargetMap,
@@ -106,6 +111,7 @@ const LEGACY_RULE_DEFAULTS: RuleConfig = {
   drawRule: 'threefold',
   scoringMode: 'basic',
 };
+const AI_WATCHDOG_BUFFER_MS = 250;
 
 /** Returns stable rule-config cache key used for store-side derivation memoization. */
 function ruleConfigKey(config: RuleConfig): string {
@@ -445,6 +451,7 @@ export function createGameStore(options: StoreOptions = {}) {
 
   const store = createStore<GameStoreState>((set, get) => {
     let aiWorker: AiWorkerLike | null = null;
+    let aiWatchdogId: ReturnType<typeof globalThis.setTimeout> | null = null;
     let nextAiRequestId = 1;
 
     function getTurnSpans(turnLog: TurnRecord[], historyCursor: number): Array<{
@@ -499,7 +506,18 @@ export function createGameStore(options: StoreOptions = {}) {
       return lastSpan.start;
     }
 
+    function clearAiWatchdog(): void {
+      if (aiWatchdogId === null) {
+        return;
+      }
+
+      globalThis.clearTimeout(aiWatchdogId);
+      aiWatchdogId = null;
+    }
+
     function disposeAiWorker(): void {
+      clearAiWatchdog();
+
       if (!aiWorker) {
         return;
       }
@@ -508,6 +526,36 @@ export function createGameStore(options: StoreOptions = {}) {
       aiWorker.onerror = null;
       aiWorker.terminate();
       aiWorker = null;
+    }
+
+    function handleAiWatchdogTimeout(requestId: number): void {
+      aiWatchdogId = null;
+
+      const latest = get();
+
+      if (latest.pendingAiRequestId !== requestId) {
+        return;
+      }
+
+      disposeAiWorker();
+      set({
+        aiError: 'Computer move timed out.',
+        aiStatus: 'error',
+        pendingAiRequestId: null,
+      });
+    }
+
+    function scheduleAiWatchdog(requestId: number, matchSettings: MatchSettings): void {
+      clearAiWatchdog();
+
+      if (!isComputerMatch(matchSettings)) {
+        return;
+      }
+
+      aiWatchdogId = globalThis.setTimeout(
+        () => handleAiWatchdogTimeout(requestId),
+        AI_DIFFICULTY_PRESETS[matchSettings.aiDifficulty].timeBudgetMs + AI_WATCHDOG_BUFFER_MS,
+      );
     }
 
     function getAiWorker(): AiWorkerLike | null {
@@ -542,6 +590,8 @@ export function createGameStore(options: StoreOptions = {}) {
           return;
         }
 
+        clearAiWatchdog();
+
         if (message.type === 'error') {
           set({
             aiError: message.message,
@@ -564,6 +614,7 @@ export function createGameStore(options: StoreOptions = {}) {
         commitAction(message.result.action, message.result);
       };
       aiWorker.onerror = (event) => {
+        clearAiWatchdog();
         set({
           aiError: event.message || 'Computer move failed.',
           aiStatus: 'error',
@@ -583,9 +634,10 @@ export function createGameStore(options: StoreOptions = {}) {
         state.historyCursor !== state.turnLog.length ||
         state.future.length > 0
       ) {
-        if (state.aiStatus !== 'error' && state.pendingAiRequestId !== null) {
+        if (state.pendingAiRequestId !== null) {
+          disposeAiWorker();
           set({
-            aiStatus: 'idle',
+            aiStatus: state.aiStatus === 'error' ? 'error' : 'idle',
             pendingAiRequestId: null,
           });
         }
@@ -615,7 +667,7 @@ export function createGameStore(options: StoreOptions = {}) {
         aiStatus: 'thinking',
         pendingAiRequestId: requestId,
       });
-
+      scheduleAiWatchdog(requestId, state.matchSettings);
       worker.postMessage({
         type: 'chooseMove',
         requestId,

@@ -10,7 +10,6 @@ import {
   getController,
   getTopChecker,
   isFullStackOwnedByPlayer,
-  isSingleChecker,
   isStack,
 } from '@/domain/model/board';
 import { FRONT_HOME_ROW, HOME_ROWS } from '@/domain/model/constants';
@@ -86,6 +85,8 @@ export function evaluateState(
   const summary = getScoreSummary(state);
   const mobility = getPlayerMobility(state, perspectivePlayer, ruleConfig);
   const opponentMobility = getPlayerMobility(state, opponent, ruleConfig);
+  const frozenEnemySingles = summary.frozenEnemySingles[perspectivePlayer];
+  const ownFrozenSingles = summary.frozenEnemySingles[opponent];
 
   let score = 0;
 
@@ -94,10 +95,8 @@ export function evaluateState(
   score -= summary.homeFieldSingles[opponent] * HOME_FIELD_SINGLE;
   score += summary.controlledStacks[perspectivePlayer] * CONTROLLED_STACK;
   score -= summary.controlledStacks[opponent] * CONTROLLED_STACK;
-  score += summary.frozenEnemySingles[perspectivePlayer] * FROZEN_ENEMY_SINGLE;
-  score -= summary.frozenEnemySingles[opponent] * FROZEN_ENEMY_SINGLE;
-  score -= summary.frozenEnemySingles[opponent] * OWN_FROZEN_SINGLE;
-  score += summary.frozenEnemySingles[perspectivePlayer] * OWN_FROZEN_SINGLE;
+  score += frozenEnemySingles * FROZEN_ENEMY_SINGLE;
+  score -= ownFrozenSingles * OWN_FROZEN_SINGLE;
 
   score += Math.max(-MOBILITY_CAP, Math.min(MOBILITY_CAP, mobility.actionCount - opponentMobility.actionCount))
     * MOBILITY_PER_ACTION;
@@ -125,10 +124,6 @@ export function evaluateState(
       if (isFullStackOwnedByPlayer(state.board, coord, topChecker.owner)) {
         score += sign * FULL_OWNED_FRONT_ROW_STACK;
       }
-    }
-
-    if (isSingleChecker(state.board, coord) && topChecker.frozen) {
-      score += topChecker.owner === perspectivePlayer ? -OWN_FROZEN_SINGLE : FROZEN_ENEMY_SINGLE;
     }
   }
 

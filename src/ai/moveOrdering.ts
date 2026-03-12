@@ -6,10 +6,9 @@ import {
   type RuleConfig,
   type TurnAction,
 } from '@/domain';
-import { getCellHeight } from '@/domain/model/board';
+import { getCellHeight, getTopChecker } from '@/domain/model/board';
 import { FRONT_HOME_ROW, HOME_ROWS } from '@/domain/model/constants';
-import { parseCoord } from '@/domain/model/coordinates';
-import { evaluateState } from '@/ai/evaluation';
+import { getAdjacentCoord, getJumpDirection, parseCoord } from '@/domain/model/coordinates';
 import type { AiDifficultyPreset } from '@/ai/types';
 
 export type OrderedAction = {
@@ -18,6 +17,27 @@ export type OrderedAction = {
   nextState: EngineState;
   score: number;
 };
+
+export type OrderMovesOptions = {
+  actions?: TurnAction[];
+  deadline?: number;
+  includeAllQuietMoves?: boolean;
+  now?: () => number;
+  pvMove?: TurnAction | null;
+  ttMove?: TurnAction | null;
+};
+
+const AI_SEARCH_TIMEOUT = 'AI_SEARCH_TIMEOUT';
+
+function throwIfTimedOut(deadline?: number, now?: () => number): void {
+  if (deadline === undefined || !now) {
+    return;
+  }
+
+  if (now() >= deadline) {
+    throw new Error(AI_SEARCH_TIMEOUT);
+  }
+}
 
 /** Serializes one action into a comparable key used for PV/TT move matching. */
 function actionKey(action: TurnAction): string {
@@ -83,48 +103,69 @@ function improvesHomeField(action: TurnAction, player: Player): boolean {
   return HOME_ROWS[player].has(row as never);
 }
 
-/**
- * Freezing/unfreezing is only produced by jumps, so a board-shape change after a jump is enough
- * for this small board to treat the move as tactically sharp.
- */
-function causesFreezeSwing(state: EngineState, nextState: EngineState, action: TurnAction): boolean {
+/** Returns a small positive bonus when the jump freezes an enemy or thaws an own frozen single. */
+function getFreezeSwingBonus(state: EngineState, action: TurnAction, player: Player): number {
   if (action.type !== 'jumpSequence') {
-    return false;
+    return 0;
   }
 
-  return JSON.stringify(state.board) !== JSON.stringify(nextState.board);
+  const landing = action.path[0];
+  const direction = landing ? getJumpDirection(action.source, landing) : null;
+  const jumpedCoord = direction ? getAdjacentCoord(action.source, direction) : null;
+
+  if (!jumpedCoord) {
+    return 0;
+  }
+
+  const jumpedChecker = getTopChecker(state.board, jumpedCoord);
+
+  if (!jumpedChecker) {
+    return 0;
+  }
+
+  if (jumpedChecker.owner === player) {
+    return jumpedChecker.frozen ? 1 : 0;
+  }
+
+  return jumpedChecker.frozen ? 0 : 1;
 }
 
 /** Orders moves for alpha-beta search and prunes quiet moves by preset breadth. */
 export function orderMoves(
   state: EngineState,
-  perspectivePlayer: Player,
+  _perspectivePlayer: Player,
   ruleConfig: RuleConfig,
   preset: AiDifficultyPreset,
-  pvMove?: TurnAction | null,
-  ttMove?: TurnAction | null,
+  {
+    actions,
+    deadline,
+    includeAllQuietMoves = false,
+    now,
+    pvMove,
+    ttMove,
+  }: OrderMovesOptions = {},
 ): OrderedAction[] {
-  const baseScore = evaluateState(state, perspectivePlayer, ruleConfig);
   const actor = state.currentPlayer;
-  const ordered = getLegalActions(state, ruleConfig).map<OrderedAction>((action) => {
+  const ordered = (actions ?? getLegalActions(state, ruleConfig)).map<OrderedAction>((action) => {
+    throwIfTimedOut(deadline, now);
+
     const nextState = advanceEngineState(state, action, ruleConfig);
-    const delta = evaluateState(nextState, perspectivePlayer, ruleConfig) - baseScore;
     const winsImmediately =
       nextState.status === 'gameOver' &&
       (nextState.victory.type === 'homeField' || nextState.victory.type === 'sixStacks') &&
       nextState.victory.winner === actor;
     const frontRowGrowth = growsFrontRowStack(state, action, nextState, actor);
     const homeProgress = improvesHomeField(action, actor);
-    const freezeSwing = causesFreezeSwing(state, nextState, action);
+    const freezeSwingBonus = getFreezeSwingBonus(state, action, actor);
     const isTactical =
       winsImmediately ||
       action.type === 'jumpSequence' ||
       action.type === 'manualUnfreeze' ||
       frontRowGrowth ||
       homeProgress ||
-      freezeSwing;
+      freezeSwingBonus > 0;
 
-    let score = delta;
+    let score = 0;
 
     if (isSameAction(ttMove, action)) {
       score += 200_000;
@@ -154,8 +195,8 @@ export function orderMoves(
       score += 4_000;
     }
 
-    if (freezeSwing) {
-      score += 2_000;
+    if (freezeSwingBonus > 0) {
+      score += freezeSwingBonus * 2_000;
     }
 
     return {
@@ -167,6 +208,10 @@ export function orderMoves(
   });
 
   ordered.sort((left, right) => right.score - left.score);
+
+  if (includeAllQuietMoves) {
+    return ordered;
+  }
 
   // Harder difficulties search deeper and wider, but tactical moves are always preserved.
   const tacticalMoves = ordered.filter((entry) => entry.isTactical);

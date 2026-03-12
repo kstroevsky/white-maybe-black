@@ -10,6 +10,12 @@ export type AiDifficultyPreset = {
   timeBudgetMs: number;
 };
 
+export type AiFallbackKind =
+  | 'none'
+  | 'partialCurrentDepth'
+  | 'previousDepth'
+  | 'legalOrder';
+
 /** Inputs accepted by the pure search entrypoint. */
 export type ChooseComputerActionRequest = {
   difficulty: AiDifficulty;
@@ -23,9 +29,12 @@ export type ChooseComputerActionRequest = {
 export type AiSearchResult = {
   action: TurnAction | null;
   completedDepth: number;
+  completedRootMoves: number;
   elapsedMs: number;
   evaluatedNodes: number;
+  fallbackKind: AiFallbackKind;
   score: number;
+  timedOut: boolean;
 };
 
 /** Message sent from the store to the worker. */
