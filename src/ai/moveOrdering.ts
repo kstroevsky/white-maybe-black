@@ -8,6 +8,7 @@ import {
   type TurnAction,
 } from '@/domain';
 import { evaluateStructureState } from '@/ai/evaluation';
+import { actionKey, throwIfTimedOut } from '@/ai/search/shared';
 import { getCellHeight, getTopChecker } from '@/domain/model/board';
 import { FRONT_HOME_ROW, HOME_ROWS } from '@/domain/model/constants';
 import { getAdjacentCoord, getJumpDirection, parseCoord } from '@/domain/model/coordinates';
@@ -42,28 +43,12 @@ export type OrderMovesOptions = {
   ttMove?: TurnAction | null;
 };
 
-const AI_SEARCH_TIMEOUT = 'AI_SEARCH_TIMEOUT';
-
-function throwIfTimedOut(deadline?: number, now?: () => number): void {
+function throwIfMoveOrderingTimedOut(deadline?: number, now?: () => number): void {
   if (deadline === undefined || !now) {
     return;
   }
 
-  if (now() >= deadline) {
-    throw new Error(AI_SEARCH_TIMEOUT);
-  }
-}
-
-/** Serializes one action into a comparable key used for PV/TT move matching. */
-function actionKey(action: TurnAction): string {
-  switch (action.type) {
-    case 'manualUnfreeze':
-      return `${action.type}:${action.coord}`;
-    case 'jumpSequence':
-      return `${action.type}:${action.source}:${action.path.join('>')}`;
-    default:
-      return `${action.type}:${action.source}:${action.target}`;
-  }
+  throwIfTimedOut(now, deadline);
 }
 
 /** Matches previously preferred moves against freshly generated legal actions. */
@@ -236,7 +221,7 @@ export function orderMoves(
   const actor = state.currentPlayer;
   const baseStructureScore = evaluateStructureState(state, actor, ruleConfig);
   const ordered = (actions ?? getLegalActions(state, ruleConfig)).map<OrderedAction>((action) => {
-    throwIfTimedOut(deadline, now);
+    throwIfMoveOrderingTimedOut(deadline, now);
 
     const nextState = advanceEngineState(state, action, ruleConfig);
     const nextPositionKey = hashPosition(nextState);
