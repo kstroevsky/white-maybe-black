@@ -37,7 +37,7 @@ export function assertCoord(value: unknown, label: string): Coord {
   return value as Coord;
 }
 
-/** Runtime guard for encoded forced jump continuation state. */
+/** Runtime guard for encoded post-jump follow-up state. */
 export function assertPendingJump(value: unknown): PendingJump | null {
   if (value == null) {
     return null;

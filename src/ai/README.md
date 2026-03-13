@@ -79,7 +79,7 @@ flowchart TD
 The AI assumes the domain already guarantees:
 
 - all generated actions are legal;
-- forced jump continuation is encoded in `pendingJump`;
+- same-player jump follow-up state is encoded in `pendingJump`;
 - `advanceEngineState()` returns a complete, immutable next state;
 - victory and draw status are already resolved by the reducer layer;
 - position hashing is stable for equivalent search states.
@@ -210,7 +210,7 @@ The stored fields matter:
 
 The search adds one extra ply when the leaf is tactically unstable:
 
-- an active jump continuation exists, or
+- a same-player jump follow-up exists, or
 - the side to move has an immediate terminal threat.
 
 This avoids stopping exactly one move before an obvious tactical outcome.

@@ -276,10 +276,6 @@ export function getJumpContinuationTargets(
   source: Coord,
   draftPath: Coord[],
 ): Coord[] {
-  if (state.pendingJump && state.pendingJump.source !== source) {
-    return [];
-  }
-
   const movingPlayer = getMovingPlayer(state.board, source);
 
   if (!movingPlayer) {

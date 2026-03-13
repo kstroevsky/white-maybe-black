@@ -4,6 +4,7 @@ import {
   applyAction,
   createInitialState,
   getJumpContinuationTargets,
+  getLegalActions,
   getLegalActionsForCell,
   validateAction,
 } from '@/domain';
@@ -170,7 +171,7 @@ describe('game engine moves', () => {
     expect(afterOwnerJump.board.B2.checkers[0].frozen).toBe(false);
   });
 
-  it('keeps turn ownership on jump continuation and allows manual next-segment choice', () => {
+  it('keeps the same player on a jump follow-up and allows any legal second action', () => {
     const state = gameStateWithBoard(
       boardWithPieces({
         A1: [checker('white')],
@@ -191,26 +192,122 @@ describe('game engine moves', () => {
     );
 
     expect(afterFirstJump.currentPlayer).toBe('white');
-    const jumpActions = getLegalActionsForCell(afterFirstJump, 'C3', withConfig()).filter(
-      (action) => action.type === 'jumpSequence',
-    );
-    expect(jumpActions).toContainEqual({
+    expect(afterFirstJump.pendingJump?.source).toBe('C3');
+    const legalActions = getLegalActions(afterFirstJump, withConfig());
+
+    expect(legalActions).toContainEqual({
       type: 'jumpSequence',
       source: 'C3',
       path: ['E5'],
+    });
+    expect(legalActions).toContainEqual({
+      type: 'moveSingleToEmpty',
+      source: 'B2',
+      target: 'A1',
     });
 
     const afterSecondJump = applyAction(
       afterFirstJump,
       {
-        type: 'jumpSequence',
-        source: 'C3',
-        path: ['E5'],
+        type: 'moveSingleToEmpty',
+        source: 'B2',
+        target: 'A1',
       },
       withConfig(),
     );
 
     expect(afterSecondJump.currentPlayer).toBe('black');
+    expect(afterSecondJump.pendingJump).toBeNull();
+  });
+
+  it('does not grant a third action when the follow-up move is another jump with continuation', () => {
+    const state = gameStateWithBoard(
+      boardWithPieces({
+        A1: [checker('white')],
+        A3: [checker('white')],
+        B2: [checker('white')],
+        B4: [checker('white')],
+        D4: [checker('white')],
+        F6: [checker('black')],
+      }),
+    );
+    const afterFirstJump = applyAction(
+      state,
+      {
+        type: 'jumpSequence',
+        source: 'A1',
+        path: ['C3'],
+      },
+      withConfig(),
+    );
+
+    expect(afterFirstJump.currentPlayer).toBe('white');
+    expect(
+      getLegalActionsForCell(afterFirstJump, 'A3', withConfig()).filter(
+        (action) => action.type === 'jumpSequence',
+      ),
+    ).toContainEqual({
+      type: 'jumpSequence',
+      source: 'A3',
+      path: ['C5'],
+    });
+
+    const afterFollowUpJump = applyAction(
+      afterFirstJump,
+      {
+        type: 'jumpSequence',
+        source: 'A3',
+        path: ['C5'],
+      },
+      withConfig(),
+    );
+
+    expect(afterFollowUpJump.currentPlayer).toBe('black');
+    expect(afterFollowUpJump.pendingJump).toBeNull();
+  });
+
+  it('ends the game immediately when a winning jump would otherwise leave a follow-up', () => {
+    const homeCoords = [
+      'A4',
+      'B4',
+      'C4',
+      'D4',
+      'E4',
+      'F4',
+      'A5',
+      'B5',
+      'D5',
+      'E5',
+      'F5',
+      'A6',
+      'B6',
+      'C6',
+      'D6',
+      'E6',
+      'F6',
+    ] as const;
+    const pieces = Object.fromEntries(
+      homeCoords.map((coord) => [coord, [checker('white')]]),
+    ) as Partial<Record<(typeof homeCoords)[number] | 'A3', ReturnType<typeof checker>[]>>;
+    pieces.A3 = [checker('white')];
+
+    const state = gameStateWithBoard(boardWithPieces(pieces));
+    const afterWinningJump = applyAction(
+      state,
+      {
+        type: 'jumpSequence',
+        source: 'A3',
+        path: ['C5'],
+      },
+      withConfig(),
+    );
+
+    expect(afterWinningJump.status).toBe('gameOver');
+    expect(afterWinningJump.victory).toEqual({
+      type: 'homeField',
+      winner: 'white',
+    });
+    expect(afterWinningJump.pendingJump).toBeNull();
   });
 
   it('ends turn when only repeating jump-back continuation exists', () => {

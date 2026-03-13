@@ -3,10 +3,10 @@ import type { TurnAction } from '@/domain';
 import { getComputerUndoTarget } from '@/app/store/createGameStore/history';
 import { isComputerMatch, isComputerTurn } from '@/app/store/createGameStore/match';
 import {
+  createJumpFollowUpState,
   createIdleSelection,
-  createJumpContinuationState,
   createSelectionState,
-  getJumpContinuationSelection,
+  getJumpFollowUpSelection,
 } from '@/app/store/createGameStore/selection';
 import type { GameStoreState } from '@/app/store/createGameStore/types';
 
@@ -51,14 +51,14 @@ export function createGameplayActions({
         return;
       }
 
-      const jumpContinuation = getJumpContinuationSelection(state.gameState);
+      const jumpFollowUp = getJumpFollowUpSelection(state.gameState);
 
-      if (!jumpContinuation) {
+      if (!jumpFollowUp) {
         set(createIdleSelection(state.gameState));
         return;
       }
 
-      set(createJumpContinuationState(jumpContinuation.source, jumpContinuation.targets));
+      set(createJumpFollowUpState(jumpFollowUp.source, jumpFollowUp.targets));
     },
     chooseActionType: (actionType) => {
       const state = get();

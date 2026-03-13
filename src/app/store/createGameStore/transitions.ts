@@ -13,7 +13,7 @@ import {
   createIdleSelection,
   createSelectionState,
   createSelectionUpdate,
-  getJumpContinuationSelection,
+  getJumpFollowUpSelection,
 } from '@/app/store/createGameStore/selection';
 import type {
   AiStatus,
@@ -85,16 +85,10 @@ export function createStoreTransitions({
     const nextTurnLog = nextGameState.history;
     const nextPast = [...state.past, createUndoFrame(state.gameState)];
     const nextFuture: GameStoreState['future'] = [];
-    const jumpContinuation = getJumpContinuationSelection(nextGameState);
+    const jumpFollowUp = getJumpFollowUpSelection(nextGameState);
     const computerMatch = isComputerMatch(state.matchSettings);
-    const nextInteraction: InteractionState = jumpContinuation
-      ? {
-          type: 'buildingJumpChain',
-          source: jumpContinuation.source,
-          path: [],
-          availableTargets: jumpContinuation.targets,
-        }
-      : nextGameState.status === 'gameOver'
+    const nextInteraction: InteractionState =
+      nextGameState.status === 'gameOver'
         ? { type: 'gameOver' }
         : computerMatch
           ? { type: 'idle' }
@@ -117,8 +111,8 @@ export function createStoreTransitions({
     set({
       ...nextData,
       historyHydrationStatus: nextHistoryHydrationStatus,
-      ...(jumpContinuation
-        ? createSelectionUpdate(nextGameState, jumpContinuation)
+      ...(jumpFollowUp
+        ? createSelectionUpdate(nextGameState, jumpFollowUp)
         : createSelectionState(null, null, nextInteraction)),
       ...resetAiState(),
       importError: null,
@@ -174,12 +168,12 @@ export function createStoreTransitions({
         runtimeState.gameState,
         runtimeState.ruleConfig,
       );
-      const jumpContinuation = getJumpContinuationSelection(runtimeState.gameState);
+      const jumpFollowUp = getJumpFollowUpSelection(runtimeState.gameState);
 
       set((current) => ({
         ...runtimeState,
         ...nextBoardDerivation,
-        ...createSelectionUpdate(runtimeState.gameState, jumpContinuation),
+        ...createSelectionUpdate(runtimeState.gameState, jumpFollowUp),
         ...resetAiState(),
         historyHydrationStatus,
         lastAiDecision: null,

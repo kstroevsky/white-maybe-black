@@ -114,15 +114,7 @@ export function getLegalActionsForCell(
     return [];
   }
 
-  if (state.pendingJump && state.pendingJump.source !== coord) {
-    return [];
-  }
-
   if (isFrozenSingle(state.board, coord) && getTopChecker(state.board, coord)?.owner === state.currentPlayer) {
-    if (state.pendingJump) {
-      return [];
-    }
-
     return [{ type: 'manualUnfreeze', coord }];
   }
 
@@ -143,10 +135,6 @@ export function getLegalActionsForCell(
       path: [target],
     })),
   );
-
-  if (state.pendingJump) {
-    return actions;
-  }
 
   const splitTargets = isPlayerStack ? getSplitTargets(state.board, coord) : [];
 
@@ -204,9 +192,5 @@ export function getLegalActions(
   state: Pick<EngineState, 'board' | 'currentPlayer' | 'pendingJump' | 'status'>,
   config: Partial<RuleConfig> = {},
 ): TurnAction[] {
-  if (state.pendingJump) {
-    return getLegalActionsForCell(state, state.pendingJump.source, config);
-  }
-
   return allCoords().flatMap((coord) => getLegalActionsForCell(state, coord, config));
 }

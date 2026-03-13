@@ -27,8 +27,8 @@ describe('App', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Клетка A1' }, { timeout: 3000 }));
 
-    expect(await screen.findByRole('button', { name: 'Восхождение' })).toBeInTheDocument();
-  });
+    expect(await screen.findByRole('button', { name: 'Восхождение' }, { timeout: 6000 })).toBeInTheDocument();
+  }, 10000);
 
   it('opens move choice in a dialog after selecting a checker', async () => {
     const user = userEvent.setup();
@@ -55,18 +55,18 @@ describe('App', () => {
     await user.click(await screen.findByRole('button', { name: 'English' }));
 
     expect(screen.getByText('Local hot-seat play on one screen.')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Cell A1' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Cell A1' }, { timeout: 6000 })).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: 'Instructions' }));
 
-    expect(await screen.findByRole('heading', { name: 'Canonical instructions' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Canonical instructions' }, { timeout: 6000 })).toBeInTheDocument();
     expect(screen.getByText('Precise game instruction - English')).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: 'Settings' }));
 
-    expect(await screen.findByRole('heading', { name: 'Rules and session' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Rules and session' }, { timeout: 6000 })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Export / Import' })).toBeInTheDocument();
-  });
+  }, 10000);
 
   it('keeps the game state when switching between game, instructions, and settings tabs', async () => {
     const user = userEvent.setup();

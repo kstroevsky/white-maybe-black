@@ -210,7 +210,7 @@ describe('createGameStore history and interaction', () => {
     });
   });
 
-  it('commits jump segments immediately and keeps forced continuation selected', () => {
+  it('returns to a neutral jump follow-up state after the first jump and after cancel', () => {
     const state = gameStateWithBoard(
       boardWithPieces({
         A1: [checker('white')],
@@ -228,13 +228,91 @@ describe('createGameStore history and interaction', () => {
     store.getState().chooseActionType('jumpSequence');
     store.getState().selectCell('C3');
 
-    expect(store.getState().selectedCell).toBe('C3');
-    expect(store.getState().legalTargets).toEqual(['E5']);
+    expect(store.getState().selectedCell).toBeNull();
+    expect(store.getState().selectedActionType).toBeNull();
+    expect(store.getState().interaction).toEqual({
+      type: 'jumpFollowUp',
+      source: 'C3',
+      availableTargets: ['E5'],
+    });
+    expect(store.getState().selectableCoords).toEqual(
+      expect.arrayContaining(['B2', 'C3', 'D4']),
+    );
 
     store.getState().cancelInteraction();
 
-    expect(store.getState().selectedCell).toBe('C3');
-    expect(store.getState().selectedActionType).toBe('jumpSequence');
-    expect(store.getState().legalTargets).toEqual(['E5']);
+    expect(store.getState().selectedCell).toBeNull();
+    expect(store.getState().selectedActionType).toBeNull();
+    expect(store.getState().interaction).toEqual({
+      type: 'jumpFollowUp',
+      source: 'C3',
+      availableTargets: ['E5'],
+    });
+  });
+
+  it('passes the turn only after the jump follow-up action is spent', () => {
+    const state = gameStateWithBoard(
+      boardWithPieces({
+        A1: [checker('white')],
+        B2: [checker('white')],
+        D4: [checker('white')],
+        F6: [checker('black')],
+      }),
+    );
+    const store = createGameStore({
+      initialSession: createSession(state),
+      storage: undefined,
+    });
+
+    store.getState().selectCell('A1');
+    store.getState().chooseActionType('jumpSequence');
+    store.getState().selectCell('C3');
+
+    expect(store.getState().interaction.type).toBe('jumpFollowUp');
+
+    store.getState().selectCell('D4');
+    store.getState().chooseActionType('moveSingleToEmpty');
+    store.getState().selectCell('E4');
+
+    expect(store.getState().gameState.currentPlayer).toBe('black');
+    expect(store.getState().interaction).toEqual({
+      type: 'passingDevice',
+      nextPlayer: 'black',
+    });
+  });
+
+  it('hydrates saved pending-jump states into the neutral jump follow-up UI', () => {
+    const state = gameStateWithBoard(
+      boardWithPieces({
+        A1: [checker('white')],
+        B2: [checker('white')],
+        D4: [checker('white')],
+        F6: [checker('black')],
+      }),
+    );
+    const afterFirstJump = applyAction(
+      state,
+      {
+        type: 'jumpSequence',
+        source: 'A1',
+        path: ['C3'],
+      },
+      withConfig(),
+    );
+    const store = createGameStore({
+      initialSession: createSession(afterFirstJump),
+      storage: undefined,
+    });
+
+    expect(store.getState().selectedCell).toBeNull();
+    expect(store.getState().selectedActionType).toBeNull();
+    expect(store.getState().interaction).toEqual({
+      type: 'jumpFollowUp',
+      source: 'C3',
+      availableTargets: ['E5'],
+    });
+    expect(store.getState().selectableCoords).toEqual(
+      expect.arrayContaining(['B2', 'C3', 'D4']),
+    );
   });
 });

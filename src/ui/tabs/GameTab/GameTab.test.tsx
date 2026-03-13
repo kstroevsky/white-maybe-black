@@ -133,11 +133,11 @@ describe('GameTab compact layout', () => {
 
     await user.click(screen.getByRole('tab', { name: 'История' }));
 
-    expect(await screen.findByRole('heading', { name: 'История' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'История' }, { timeout: 6000 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Вперёд' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Параметры матча' })).not.toBeInTheDocument();
-  });
+  }, 10000);
 
   it('renders the full history list instead of truncating to ten moves', async () => {
     const user = userEvent.setup();

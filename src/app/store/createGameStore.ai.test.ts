@@ -3,7 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGameStore } from '@/app/store/createGameStore';
 import { applyAction, createInitialState, getLegalActions } from '@/domain';
 import type { MatchSettings } from '@/shared/types/session';
-import { createSession, resetFactoryIds, undoFrame, withConfig } from '@/test/factories';
+import {
+  boardWithPieces,
+  checker,
+  createSession,
+  gameStateWithBoard,
+  resetFactoryIds,
+  undoFrame,
+  withConfig,
+} from '@/test/factories';
 
 import {
   createAiResult,
@@ -199,6 +207,47 @@ describe('createGameStore AI integration', () => {
 
     expect(rewoundWorker.requests).toHaveLength(0);
     expect(rewoundStore.getState().historyCursor).toBe(0);
+  });
+
+  it('immediately schedules the AI follow-up action after a jump with continuation', async () => {
+    const worker = new FakeAiWorker();
+    const state = gameStateWithBoard(
+      boardWithPieces({
+        A1: [checker('white')],
+        B2: [checker('white')],
+        D4: [checker('white')],
+        F6: [checker('black')],
+      }),
+    );
+    createGameStore({
+      createAiWorker: () => worker,
+      initialSession: createSession(state, {
+        matchSettings: {
+          opponentMode: 'computer',
+          humanPlayer: 'black',
+          aiDifficulty: 'easy',
+        },
+      }),
+      storage: undefined,
+    });
+
+    await Promise.resolve();
+
+    expect(worker.requests).toHaveLength(1);
+
+    worker.reply(
+      createAiResult({
+        action: {
+          type: 'jumpSequence',
+          source: 'A1',
+          path: ['C3'],
+        },
+      }),
+    );
+
+    expect(worker.requests).toHaveLength(2);
+    expect(worker.requests[1]?.state.currentPlayer).toBe('white');
+    expect(worker.requests[1]?.state.pendingJump?.source).toBe('C3');
   });
 
   it('recovers from a hung computer worker via the watchdog timeout', () => {

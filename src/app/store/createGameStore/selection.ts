@@ -11,7 +11,7 @@ import type { InteractionState } from '@/shared/types/session';
 
 import type {
   GameStoreData,
-  JumpContinuationSelection,
+  JumpFollowUpSelection,
   SelectionStateSlice,
 } from '@/app/store/createGameStore/types';
 
@@ -49,17 +49,17 @@ export function createIdleSelection(
   );
 }
 
-/** Restricts the target map to the currently forced jump continuation. */
+/** Restricts the target map to the currently selected jump landing options. */
 export function createJumpOnlyTargetMap(targets: Coord[]): TargetMap {
   const targetMap = createEmptyTargetMap();
   targetMap.jumpSequence = targets.slice();
   return targetMap;
 }
 
-/** Detects whether the active player must continue a jump chain. */
-export function getJumpContinuationSelection(
+/** Detects whether the active player has an optional post-jump follow-up move. */
+export function getJumpFollowUpSelection(
   gameState: GameState,
-): JumpContinuationSelection | null {
+): JumpFollowUpSelection | null {
   if (gameState.status === 'gameOver' || !gameState.pendingJump) {
     return null;
   }
@@ -78,25 +78,18 @@ export function getJumpContinuationSelection(
   };
 }
 
-/** Rebuilds the selection state for a forced jump continuation. */
-export function createJumpContinuationState(
+/** Rebuilds the neutral selection state for an optional post-jump follow-up. */
+export function createJumpFollowUpState(
   source: Coord,
   targets: Coord[],
 ): SelectionStateSlice {
   return createSelectionState(
-    source,
-    'jumpSequence',
+    null,
+    null,
     {
-      type: 'buildingJumpChain',
+      type: 'jumpFollowUp',
       source,
-      path: [],
       availableTargets: targets,
-    },
-    {
-      legalTargets: targets,
-      draftJumpPath: [],
-      availableActionKinds: ['jumpSequence'],
-      selectedTargetMap: createJumpOnlyTargetMap(targets),
     },
   );
 }
@@ -104,14 +97,13 @@ export function createJumpContinuationState(
 /** Creates the initial interaction state used during store boot. */
 export function createInitialInteractionState(
   gameState: GameState,
-  jumpContinuation: JumpContinuationSelection | null,
+  jumpFollowUp: JumpFollowUpSelection | null,
 ): InteractionState {
-  if (jumpContinuation) {
+  if (jumpFollowUp) {
     return {
-      type: 'buildingJumpChain',
-      source: jumpContinuation.source,
-      path: [],
-      availableTargets: jumpContinuation.targets,
+      type: 'jumpFollowUp',
+      source: jumpFollowUp.source,
+      availableTargets: jumpFollowUp.targets,
     };
   }
 
@@ -121,11 +113,11 @@ export function createInitialInteractionState(
 /** Applies either forced-jump or neutral selection state to a payload. */
 export function createSelectionUpdate(
   gameState: GameState,
-  jumpContinuation: JumpContinuationSelection | null,
+  jumpFollowUp: JumpFollowUpSelection | null,
 ): SelectionStateSlice {
-  if (!jumpContinuation) {
+  if (!jumpFollowUp) {
     return createIdleSelection(gameState);
   }
 
-  return createJumpContinuationState(jumpContinuation.source, jumpContinuation.targets);
+  return createJumpFollowUpState(jumpFollowUp.source, jumpFollowUp.targets);
 }

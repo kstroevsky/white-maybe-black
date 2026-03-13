@@ -10,8 +10,8 @@ import { createPublicGameStoreActions } from '@/app/store/createGameStore/public
 import { buildSessionFromSlices, createRuntimeState, getSessionSlices } from '@/app/store/createGameStore/session';
 import {
   createInitialInteractionState,
-  createJumpOnlyTargetMap,
-  getJumpContinuationSelection,
+  createSelectionUpdate,
+  getJumpFollowUpSelection,
 } from '@/app/store/createGameStore/selection';
 import { createStoreTransitions } from '@/app/store/createGameStore/transitions';
 import type {
@@ -46,10 +46,10 @@ export function createGameStoreStateRuntime({
     initialRuntimeState.gameState,
     initialRuntimeState.ruleConfig,
   );
-  const initialJumpContinuation = getJumpContinuationSelection(initialRuntimeState.gameState);
-  const initialInteraction = createInitialInteractionState(
+  const initialJumpFollowUp = getJumpFollowUpSelection(initialRuntimeState.gameState);
+  const initialSelection = createSelectionUpdate(
     initialRuntimeState.gameState,
-    initialJumpContinuation,
+    initialJumpFollowUp,
   );
 
   let persistInitialState: (() => void) | null = null;
@@ -111,15 +111,16 @@ export function createGameStoreStateRuntime({
       aiError: null,
       aiStatus: 'idle',
       historyHydrationStatus: initialPersistence.historyHydrationStatus,
-      selectedCell: initialJumpContinuation?.source ?? null,
-      selectedActionType: initialJumpContinuation ? 'jumpSequence' : null,
-      selectedTargetMap: initialJumpContinuation
-        ? createJumpOnlyTargetMap(initialJumpContinuation.targets)
-        : createEmptyTargetMap(),
-      availableActionKinds: initialJumpContinuation ? ['jumpSequence'] : [],
-      draftJumpPath: [],
-      legalTargets: initialJumpContinuation?.targets ?? [],
-      interaction: initialInteraction,
+      selectedCell: initialSelection.selectedCell,
+      selectedActionType: initialSelection.selectedActionType,
+      selectedTargetMap: initialSelection.selectedTargetMap,
+      availableActionKinds: initialSelection.availableActionKinds,
+      draftJumpPath: initialSelection.draftJumpPath,
+      legalTargets: initialSelection.legalTargets,
+      interaction: createInitialInteractionState(
+        initialRuntimeState.gameState,
+        initialJumpFollowUp,
+      ),
       importBuffer: '',
       importError: null,
       lastAiDecision: null,

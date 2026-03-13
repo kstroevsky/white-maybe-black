@@ -27,6 +27,7 @@ export type InteractionState =
   | { type: 'idle' }
   | { type: 'pieceSelected'; source: Coord; availableActions: ActionKind[] }
   | { type: 'actionTypeSelected'; source: Coord; actionType: ActionKind; availableTargets: Coord[] }
+  | { type: 'jumpFollowUp'; source: Coord; availableTargets: Coord[] }
   | {
       type: 'choosingTarget';
       source: Coord;

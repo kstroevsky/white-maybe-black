@@ -132,8 +132,8 @@ export type SelectionStateSlice = Pick<
   | 'draftJumpPath'
 >;
 
-/** Forced-jump continuation state reconstructed from the engine. */
-export type JumpContinuationSelection = {
+/** Optional same-turn follow-up reconstructed from the engine after a jump. */
+export type JumpFollowUpSelection = {
   source: Coord;
   targets: Coord[];
 };

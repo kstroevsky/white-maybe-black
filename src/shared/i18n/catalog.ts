@@ -75,6 +75,8 @@ export function describeInteraction(language: Language, interaction: Interaction
       return copy.pieceSelected(interaction.source);
     case 'actionTypeSelected':
       return copy.actionTypeSelected(actionLabel(language, interaction.actionType));
+    case 'jumpFollowUp':
+      return copy.jumpFollowUp(interaction.source);
     case 'choosingTarget':
       return copy.choosingTarget(actionLabel(language, interaction.actionType), interaction.source);
     case 'buildingJumpChain':

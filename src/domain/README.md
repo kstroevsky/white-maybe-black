@@ -36,7 +36,7 @@ One legal move always flows through the same pipeline:
 1. `validateAction(state, action, config)`
 2. `applyValidatedActionToBoard(state, action)` in the move-generation layer
 3. reducer post-processing in `applyAction()`:
-   - switch turn or keep it for a forced jump continuation
+   - switch turn or keep it for a same-player jump follow-up
    - detect direct victory
    - detect forced pass / stalemate
    - increment repetition counts

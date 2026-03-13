@@ -11,7 +11,7 @@ import type {
 import { isFrozenSingle } from '@/domain/validators/stateValidators';
 
 import {
-  createJumpStateKey,
+  getVisitedJumpStates,
   resolveJumpPath,
 } from '@/domain/rules/moveGeneration/jump';
 import { getLegalActionsForCell } from '@/domain/rules/moveGeneration/targetDiscovery';
@@ -59,17 +59,10 @@ function actionsEqual(left: TurnAction, right: TurnAction): boolean {
 
 /** Shared source ownership validation for action variants with a source coordinate. */
 function validateCommonSource(
-  state: Pick<EngineState, 'board' | 'pendingJump'>,
+  state: Pick<EngineState, 'board'>,
   source: Coord,
   player: Player,
 ): ValidationResult {
-  if (state.pendingJump && state.pendingJump.source !== source) {
-    return {
-      valid: false,
-      reason: `Jump continuation must continue from ${state.pendingJump.source}.`,
-    };
-  }
-
   const topChecker = getTopChecker(state.board, source);
 
   if (!topChecker) {
@@ -93,13 +86,6 @@ export function validateAction(
 
   if (state.status === 'gameOver') {
     return { valid: false, reason: 'The game is already over.' };
-  }
-
-  if (state.pendingJump && action.type !== 'jumpSequence') {
-    return {
-      valid: false,
-      reason: `Jump continuation must continue from ${state.pendingJump.source}.`,
-    };
   }
 
   switch (action.type) {
@@ -147,7 +133,7 @@ export function validateAction(
         action.source,
         action.path,
         sourceTopChecker.owner,
-        new Set([createJumpStateKey(action.source, state.board)]),
+        getVisitedJumpStates(state, action.source),
       );
 
       if (!('board' in resolution)) {
