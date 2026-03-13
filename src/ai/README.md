@@ -1,382 +1,536 @@
 # AI Engine
 
-This folder contains the pure computer-opponent engine used by the browser match mode.
-It is intentionally separate from React and the Zustand store.
+`src/ai/` contains the computer-opponent system for White Maybe Black. It is intentionally separate from React, separate from the Zustand store, and almost entirely separate from browser APIs except for the thin worker and ONNX-loading bridge.
 
-The AI package has four responsibilities:
+The AI is best understood as a layered decision pipeline:
 
-1. Evaluate a board position.
-2. Order legal moves so search sees the best candidates first.
-3. Search the game tree within a difficulty-specific time/depth budget.
-4. Expose a worker-friendly API so the browser UI stays responsive.
+1. infer the strategic shape of the current position;
+2. score and order legal moves so the search explores the most promising ones first;
+3. search the game tree under a strict time/depth budget;
+4. optionally bias ordering with a lazily loaded policy/value model;
+5. return one action plus rich diagnostics that the rest of the app can inspect or ignore.
 
-## What lives here
+That layering matters because the AI is not “just search” and not “just heuristics.” Search, strategy analysis, participation heuristics, and optional neural priors are all present, but they play different roles.
 
-- `types.ts`
-  Defines the request/response contracts and difficulty preset shape.
-- `presets.ts`
-  Encodes the exact `easy` / `medium` / `hard` limits.
-- `evaluation.ts`
-  Game-specific heuristic scoring.
-- `moveOrdering.ts`
-  Tactical-first move sorting and quiet-move trimming.
-- `search.ts`
-  Iterative-deepening negamax with alpha-beta pruning and a transposition table.
-- `worker/ai.worker.ts`
-  Thin browser worker wrapper around `chooseComputerAction()`.
-- `index.ts`
-  Public barrel for the rest of the application.
+## What The Runtime AI Is, And What It Is Not
 
-## First mental model
+The current runtime AI is:
 
-If you are not used to board-game AI, the simplest way to read this package is:
+- a deterministic, bounded, browser-side search engine;
+- classical game-tree search (`iterative deepening`, `negamax`, `alpha-beta`, `quiescence`);
+- augmented with custom heuristics for this ruleset;
+- optionally nudged by ONNX policy priors when a model file is present.
 
-1. The AI looks at every legal move it can make now.
-2. For each move, it imagines the opponent's best reply.
-3. Then it imagines its own best reply to that reply.
-4. It keeps doing that until it hits a time or depth limit.
-5. When it cannot look deeper, it scores the current board with fast heuristics.
-6. It picks the move that leads to the best worst-case outcome.
+The current runtime AI is **not**:
 
-That is the core idea behind minimax-style search.
-This package uses the compact variant called `negamax`, but the high-level behavior is the same: "assume the opponent is smart, and choose the move that still leaves you in the best position."
+- a Monte Carlo Tree Search implementation;
+- a neural-only move picker;
+- a server-backed opponent;
+- a full AlphaZero reproduction.
 
-## Integration flow
+That distinction is important for correct expectations. The repository borrows ideas from policy/value self-play systems, but the move chooser you ship to the browser is still search-first.
 
-The full "play with computer" flow is:
+## Boundary With The Rest Of The App
 
-1. The store detects that the current turn belongs to the computer.
-2. The store sends `{ state, ruleConfig, matchSettings, requestId }` to the worker.
-3. The worker calls `chooseComputerAction()`.
-4. `chooseComputerAction()` asks the domain engine for legal moves and searches them.
-5. The worker posts the best result back to the store.
-6. The store ignores stale `requestId`s, applies only the latest result, and schedules the next AI turn when needed.
-
-Important architectural boundary:
-
-- The AI never mutates UI state.
-- The AI never knows about React.
-- The AI only depends on pure domain functions such as `getLegalActions()` and `advanceEngineState()`.
-
-That keeps the engine reusable later for server validation, replay analysis, benchmarking, and alternative frontends.
+The AI depends on the domain engine, not on the UI.
 
 ```mermaid
 flowchart TD
-  A["Store reaches a computer turn"] --> B["Create search request with state, rules, settings, requestId"]
-  B --> C["Worker receives request"]
-  C --> D["chooseComputerAction()"]
-  D --> E["Generate legal actions from the domain engine"]
-  E --> F["Order actions so urgent candidates are searched first"]
-  F --> G["Search deeper until time or depth limit"]
-  G --> H["Return best action and search metadata"]
-  H --> I{"requestId still current?"}
-  I -- "Yes" --> J["Store applies the move"]
-  I -- "No" --> K["Drop stale result"]
+  Store["Store notices computer turn"] --> Worker["ai.worker.ts"]
+  Worker --> Guidance["model/guidance.ts<br/>optional ONNX priors"]
+  Worker --> Search["search/rootSearch.ts"]
+  Search --> Order["moveOrdering.ts"]
+  Search --> Negamax["search/negamax.ts"]
+  Search --> Eval["evaluation.ts"]
+  Order --> Strategy["strategy.ts"]
+  Order --> Participation["participation.ts"]
+  Negamax --> Domain["src/domain<br/>getLegalActions() + advanceEngineState()"]
+  Eval --> Strategy
+  Eval --> Participation
 ```
 
-## Domain assumptions the AI relies on
+This folder exists to preserve three architectural properties:
 
-The AI assumes the domain already guarantees:
+1. the AI never mutates live application state directly;
+2. the AI never invents its own legality rules;
+3. the store can treat AI computation as replaceable infrastructure instead of embedding it inside UI state logic.
 
-- all generated actions are legal;
-- same-player jump follow-up state is encoded in `pendingJump`;
-- `advanceEngineState()` returns a complete, immutable next state;
-- victory and draw status are already resolved by the reducer layer;
-- position hashing is stable for equivalent search states.
+## Runtime Entry Points
 
-This is why the AI does not duplicate rules. It delegates legality and state transitions to `src/domain/`.
+| File | Export | Why it exists |
+| --- | --- | --- |
+| [`index.ts`](./index.ts) | package barrel | Stable API surface for store, worker, tests, and scripts |
+| [`search.ts`](./search.ts) | `chooseComputerAction` re-export | Clean public search entry point |
+| [`worker/ai.worker.ts`](./worker/ai.worker.ts) | browser worker bridge | Keeps search off the main UI thread |
+| [`types.ts`](./types.ts) | request/result/preset contracts | Makes AI I/O explicit across worker, store, and tests |
+| [`presets.ts`](./presets.ts) | `AI_DIFFICULTY_PRESETS` | Product-level difficulty tuning in one place |
 
-## Search algorithm
-
-The engine uses iterative-deepening negamax with alpha-beta pruning.
-
-In plain language, that means:
-
-- `negamax`: one search function handles both players by flipping the score sign whenever the turn changes;
-- `alpha-beta`: stop reading branches that are already proved to be worse than something we have seen before;
-- `iterative deepening`: search shallow first, then deeper and deeper, so there is always a safe best-so-far move if the timer expires.
-
-### Search flow at a glance
+## End-To-End Decision Flow
 
 ```mermaid
-flowchart TD
-  A["chooseComputerAction()"] --> B["Get all legal actions"]
-  B --> C{"Only one legal action?"}
-  C -- "Yes" --> D["Return it immediately"]
-  C -- "No" --> E["Depth 1 search"]
-  E --> F["Depth 2 search"]
-  F --> G["Depth 3 ... N"]
-  G --> H{"Budget exhausted?"}
-  H -- "No" --> I["Start next deeper iteration"]
-  I --> G
-  H -- "Yes" --> J["Select the best completed result"]
-  J --> K["Apply preset randomness for easy/medium if allowed"]
+sequenceDiagram
+  participant Store
+  participant Worker
+  participant Guidance as Model Guidance
+  participant Search as chooseComputerAction()
+  participant Domain
+
+  Store->>Worker: chooseMove(requestId, state, ruleConfig, matchSettings)
+  Worker->>Guidance: getModelGuidance(state, ruleConfig)
+  Guidance-->>Worker: action priors or null
+  Worker->>Search: chooseComputerAction(difficulty, state, ruleConfig, modelGuidance)
+  Search->>Domain: getLegalActions()
+  Search->>Search: buildParticipationState()
+  Search->>Search: iterative deepening root search
+  Search->>Domain: advanceEngineState() on candidate lines
+  Search-->>Worker: AiSearchResult
+  Worker-->>Store: result or error
 ```
 
-### What a game tree is
+The AI worker exists for responsiveness, not correctness. Correctness still comes from the domain layer and the search code itself.
 
-Think of every legal move as a branch in a tree:
+## Difficulty Presets
 
-- the root is the current board;
-- each child is "what the board looks like after one legal move";
-- grandchildren are "what happens after the opponent replies";
-- deeper levels are later turns.
+Difficulty levels are exact parameter bundles, not vague labels.
 
-The search never "knows the future". It builds a small future tree, scores the leaves, then works backward to decide which current move is safest or strongest.
+| Difficulty | Time budget | Max depth | Quiet move limit | Participation window | Variety top count |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `easy` | `120ms` | `2` | `8` | `2` | `3` |
+| `medium` | `400ms` | `4` | `16` | `3` | `2` |
+| `hard` | `1200ms` | `6` | `28` | `3` | `3` |
 
-### Why negamax
+The full preset object in [`presets.ts`](./presets.ts) also tunes:
 
-The game is deterministic, zero-sum, turn-based, and has no hidden information.
-That makes the minimax family the right baseline, and negamax is the compact symmetric formulation of minimax.
+- participation bias;
+- family/source reuse penalties;
+- repetition and self-undo penalties;
+- policy-prior weight;
+- root candidate list length;
+- controlled randomness among near-equal quiet moves.
 
-Beginner-friendly version:
+Those numbers are not arbitrary metadata. They are the AI's product behavior encoded as data, which is why tests and scripts import them directly.
 
-- In ordinary minimax, the AI tries to maximize its own score, then assumes the opponent tries to minimize that same score.
-- In negamax, both sides use the same logic: "maximize the score for the side to move".
-- When the turn changes, the meaning of "good" flips, so the score is multiplied by `-1`.
+## Core Search Pipeline
 
-That removes duplicated "max player" and "min player" code without changing the decision quality.
+### 1. Root orchestration: `search/rootSearch.ts`
 
-### Why iterative deepening
+`chooseComputerAction()` is the orchestration layer, not merely a wrapper.
 
-Iterative deepening searches depth `1`, then `2`, then `3`, and so on until the budget expires.
+Its responsibilities are:
 
-This gives three important properties:
+- read the difficulty preset;
+- gather legal actions from the domain engine;
+- infer or accept strategic intent;
+- seed participation state from recent history;
+- initialize the shared search context;
+- short-circuit immediate terminal wins when visible at the root;
+- run iterative deepening with aspiration windows;
+- degrade gracefully on timeout via ordered or previous-depth fallbacks;
+- return diagnostics, principal variation, and root candidate explanations.
 
-1. There is always a best-so-far move.
-2. Earlier shallow searches seed move ordering for deeper searches.
-3. Time-bounded difficulties stay stable inside the browser worker.
+It also decides which fallback label to expose:
 
-This matters in the browser because the AI cannot assume it will always finish the deepest planned search.
-If the worker has to stop after depth `3`, the result from depth `3` is still valid and usually stronger than a single one-shot search at the same depth.
+| Fallback kind | Meaning |
+| --- | --- |
+| `none` | completed search within the active budget |
+| `orderedRoot` | timeout happened before useful depth completion, so root ordering decided the fallback |
+| `partialCurrentDepth` | current depth timed out after some root moves were already ranked |
+| `previousDepth` | deeper search timed out, so the previous completed depth is kept |
+| `legalOrder` | only a trivial legal-order result existed |
 
-### Why alpha-beta pruning
+### 2. Negamax core: `search/negamax.ts`
 
-Alpha-beta cuts branches that cannot improve the current result.
-Without it, the branching factor is too large for a local browser AI.
+The internal search is a negamax formulation of minimax with alpha-beta pruning.
 
-Plain-language example:
+Why this formulation fits the game:
 
-1. Suppose move `A` already leads to a score of `+120`.
-2. The AI starts checking move `B`.
-3. Very early inside move `B`, it becomes clear that the opponent can force the result down to `+40`.
-4. Because `+40` is already worse than `+120`, the AI does not need to finish reading the rest of move `B`'s branch.
+- the game is deterministic;
+- it is zero-sum;
+- both players alternate perfect-information turns;
+- the only thing that changes between sides is the sign of “goodness.”
 
-That skipped work is called a prune.
-The better the move ordering is, the earlier good branches are found, and the more bad branches can be cut away.
+The implementation also uses principal-variation-style null-window re-search:
 
-```mermaid
-flowchart TD
-  A["Search one node"] --> B{"Terminal or depth limit?"}
-  B -- "Yes" --> C["Return static evaluation"]
-  B -- "No" --> D["Try ordered child move"]
-  D --> E["Search child node"]
-  E --> F["Update best score and alpha"]
-  F --> G{"alpha >= beta?"}
-  G -- "Yes" --> H["Prune remaining siblings"]
-  G -- "No" --> I["Continue with next child"]
-  H --> J["Store result in transposition table"]
-  I --> J
-```
+- first child is searched with the full alpha-beta window;
+- later children are searched with a narrow window first;
+- if a move proves better than expected, it is re-searched with the full window.
 
-### Why a transposition table
+That is why the diagnostics include `pvsResearches`.
 
-Different move orders can reach the same position.
-The transposition table caches those evaluated states and reuses them later.
+### 3. Quiescence tail: `search/quiescence.ts`
 
-This is the search equivalent of remembering work you already paid for.
+The main search stops at the configured depth limit, but the engine does not always trust that leaf. If the position is tactically “noisy,” quiescence search continues through forcing moves:
 
-Example:
+- jumps;
+- manual unfreezes;
+- strongly goal-directed moves into home rows or front home row.
 
-- line 1 reaches board `X` after `white -> black -> white`;
-- line 2 reaches the exact same board `X` through a different move order;
-- without caching, the AI would search board `X` twice;
-- with a transposition table, the second visit can reuse the first result if it is deep enough.
+This prevents shallow evaluations from stopping one ply before an obvious tactical swing.
 
-Current policy:
+### 4. Result shaping: `search/result.ts`
 
-- max size: `50_000` entries;
-- stores best move, depth, bound type, and score;
-- evicts the oldest entry when full.
+Once root actions are scored, the result layer:
 
-The stored fields matter:
+- keeps ranked actions in stable order;
+- reconstructs the principal variation from the transposition table;
+- selects among near-equal quiet candidates using difficulty-specific controlled randomness;
+- exposes a deduplicated root-candidate list for diagnostics and reporting.
 
-- `score` says how good the position looked;
-- `depth` says how deeply it was searched;
-- `bound type` says whether the score is exact, only a lower bound, or only an upper bound;
-- `best move` helps the next iteration search strong candidates first.
+The AI does not return only a move. It returns an explanation surface.
 
-### Tactical extension
+## Search Context And Supporting Heuristics
 
-The search adds one extra ply when the leaf is tactically unstable:
+### `search/types.ts`
 
-- a same-player jump follow-up exists, or
-- the side to move has an immediate terminal threat.
+`SearchContext` is the shared mutable working set for one search:
 
-This avoids stopping exactly one move before an obvious tactical outcome.
+- deadline and timer function;
+- diagnostics counters;
+- history, continuation, and killer heuristics;
+- principal-variation move hints;
+- repetition/self-undo context from the root;
+- participation state;
+- transposition table.
 
-In practice, that means the engine is less likely to miss "I can force a win on the very next move" positions just because the normal depth limit happened to land at an awkward moment.
+It exists so the search helpers can cooperate without building large nested parameter objects repeatedly at every node.
 
-## Move ordering
+### `search/shared.ts`
 
-Move ordering is critical because alpha-beta is only strong when good moves are searched early.
+| Function | Bigger purpose |
+| --- | --- |
+| `actionKey()` | Stable action serialization for tables, diagnostics, and tests |
+| `throwIfTimedOut()` / `isSearchTimeout()` | Single timeout protocol across ordering, search, and quiescence |
+| `makeTableKey()` | Canonical transposition-table key built from the domain's `hashPosition()` |
 
-Current ordering priority:
+### `search/heuristics.ts`
 
-1. transposition-table move;
-2. principal-variation move from the previous iteration;
-3. immediate wins;
-4. tactical moves:
-   - jump sequences,
-   - manual unfreeze,
-   - front-row stack growth,
-   - home-row progress,
-   - freeze swings;
-5. quiet moves sorted by static evaluation delta.
+This file manages search-wide heuristics that are not local to a single node:
 
-After sorting:
+- transposition-table size cap (`50_000`);
+- extra quiescence depth allowance (`6`);
+- repetition and self-undo penalties;
+- killer/history/continuation updates after beta cutoffs;
+- root reconstruction of previous same-side action, previous tags, and previous same-side position.
 
-- all tactical moves are kept;
-- quiet moves are trimmed according to difficulty.
+This is where the AI remembers useful search experience from earlier branches in the same move calculation.
 
-That means harder difficulties search not only deeper, but also wider.
+## Move Ordering
 
-This is also why the AI does not spend equal effort on every legal move.
-Many moves are obviously quiet or strategically similar.
-By pushing tactical or promising moves to the front, the engine spends most of its budget where the position can change sharply.
+### `moveOrdering.ts`
 
-## Evaluation function
+Move ordering is the bridge between shallow heuristics and deep search. Alpha-beta only becomes powerful when promising moves are searched early.
 
-`evaluation.ts` scores the position from one player's perspective.
+The ordering score combines:
 
-When the search reaches a leaf, the AI cannot say "this is a guaranteed win in 20 turns".
-Instead, it asks a simpler question:
+- transposition-table move bonus;
+- principal-variation move bonus;
+- immediate win bonus;
+- jump/manual-unfreeze/front-row/home-progress bonuses;
+- static structure delta;
+- strategic intent delta;
+- participation delta;
+- policy prior weight;
+- history/continuation/killer bonuses;
+- novelty, repetition, and self-undo penalties.
 
-"If the game stopped here, how healthy does this position look?"
+The file also classifies moves into concepts the rest of the AI uses:
 
-The evaluation function answers that question with a weighted sum of features that matter in this ruleset.
+- `isTactical`
+- `isForced`
+- `isRepetition`
+- `isSelfUndo`
+- `winsImmediately`
+- `sourceFamily`
+- `sourceRegion`
 
-Terminal result:
+Why this file exists separately from search:
 
-- win: `+1_000_000`
-- loss: `-1_000_000`
+- ordering logic is rich enough to deserve independent tests and documentation;
+- the same ordering machinery is reused at the root, in negamax, and in quiescence;
+- separating it makes the search algorithm easier to reason about.
+
+### Quiet move trimming
+
+After moves are scored:
+
+- tactical moves are always preserved;
+- quiet moves are truncated to the preset's `quietMoveLimit`;
+- harder difficulties therefore search both deeper and wider.
+
+This is an important product behavior: “harder” does not only mean “more plies.” It also means “fewer plausible moves are pruned before the search even begins.”
+
+## Strategic Analysis Layer
+
+### `strategy.ts`
+
+This file is the engine's position interpreter. It answers questions that raw legality does not answer:
+
+- is the position leaning toward a `home`, `sixStack`, or `hybrid` plan?
+- how much lane openness does each side have?
+- how much front-row stack progress exists?
+- how much buried material debt is locked inside stacks?
+- how many frozen critical singles exist?
+
+The output is used in three places:
+
+1. static evaluation;
+2. move ordering;
+3. offline analysis/reporting.
+
+#### Main exports
+
+| Function | Role |
+| --- | --- |
+| `analyzePosition()` | Cached extraction of position-wide structural features |
+| `getStrategicIntent()` | Classifies the side's current macro-plan |
+| `getStrategicScore()` | Converts structural analysis into a scalar position score |
+| `getActionStrategicProfile()` | Tags one move with intent change and semantic tags such as `frontBuild`, `openLane`, `rescue`, `freezeBlock` |
+| `getNoveltyPenalty()` | Penalizes repeating the same tag profile across consecutive same-side moves |
+| `inferPreviousStrategicTags()` | Reconstructs the last same-side action's tags from history |
+
+The analysis cache (`50_000` positions) exists because these structural features are reused repeatedly during a single search.
+
+## Participation Layer
+
+### `participation.ts`
+
+This subsystem is specific to White Maybe Black. It tries to keep the AI from becoming technically competent but behaviorally narrow.
+
+It tracks:
+
+- which checker families have moved recently;
+- which source cells and source regions are “hot”;
+- how wide the current frontier is;
+- how much reserve mass remains idle;
+- whether the same family/region is being reused too often.
+
+The point is not to add randomness for its own sake. The point is to encourage broader, more legible participation of material when several moves are otherwise close.
+
+#### Main exports
+
+| Function | Role |
+| --- | --- |
+| `buildParticipationState()` | Reconstructs recent-move participation context from history |
+| `getParticipationScore()` | Adds a board-level participation bonus/penalty to static evaluation |
+| `getActionParticipationProfile()` | Computes how one candidate move changes participation quality |
+
+This layer is why the AI can prefer “spread pressure across more material” over “reuse the same source family forever” when tactical urgency is absent.
+
+## Static Evaluation
+
+### `evaluation.ts`
+
+There are two evaluators:
+
+| Function | Purpose |
+| --- | --- |
+| `evaluateStructureState()` | Cheap structure-only score used primarily inside move ordering |
+| `evaluateState()` | Full leaf evaluation combining strategic score, intent bias, pending-jump pressure, and participation score |
+
+The evaluator is intentionally strategic rather than fully tactical. Tactical sharpness is delegated to search depth, move ordering, and quiescence.
+
+Important terminal behavior:
+
+- terminal win for the perspective player: `+1_000_000`
+- terminal loss: `-1_000_000`
 - draw: `0`
 
-Heuristic weights:
+That large terminal constant guarantees that no heuristic bonus can outweigh an actual forced result.
 
-| Signal | Weight |
-| --- | ---: |
-| Full owned 3-stack on front row | `8000` |
-| Each checker in a front-row stack | `900` |
-| Home-field single | `250` |
-| Distance from home rows | `-35` per row |
-| Controlled stack | `140` |
-| Frozen enemy single | `180` |
-| Own frozen single penalty | `-200` |
-| Mobility differential | `6` per action, capped at `20` actions |
-| Jump availability bonus | `80` |
+## Model Guidance Path
 
-The heuristic intentionally favors:
+The ONNX model path is optional, but it is real and integrated.
 
-- converting structure into front-row pressure;
-- preserving mobility;
-- creating tactical jump threats;
-- freezing enemy singles;
-- avoiding self-inflicted frozen liabilities.
+### `model/actionSpace.ts`
 
-It is lightweight by design so it can be called many times during search.
+The policy head predicts over a fixed action space of `2_736` indices:
 
-Terminal wins and losses use huge scores on purpose so no ordinary positional bonus can outweigh an actual forced result.
+| Segment | Count | Derivation |
+| --- | ---: | --- |
+| Manual unfreeze | `36` | one per coordinate |
+| Jump directions | `288` | `36 * 8` |
+| Adjacent move kinds | `1_152` | `36 * 8 * 4` for `climbOne`, `moveSingleToEmpty`, `splitOneFromStack`, `splitTwoFromStack` |
+| Friendly stack transfer | `1_260` | `36 * 35` ordered source-target pairs |
+| **Total** | **`2_736`** | fixed action-space size |
 
-### Evaluation flow
+Key exports:
+
+| Function | Role |
+| --- | --- |
+| `encodeActionIndex()` | Maps one legal root action into its fixed policy index |
+| `buildMaskedActionPriors()` | Converts raw logits into a normalized distribution over legal actions only |
+| `getActionSpaceMetadata()` | Debugging/introspection helper for tooling and tests |
+
+### `model/encoding.ts`
+
+`encodeStateForModel()` maps an engine state into `16 x 6 x 6` planes:
+
+| Plane range | Meaning |
+| --- | --- |
+| `0..5` | current player's single/stack occupancy by role and depth |
+| `6..11` | opponent occupancy by the same role/depth scheme |
+| `12` | empty cells |
+| `13` | current player's home rows |
+| `14` | current player's front home row |
+| `15` | pending-jump source |
+
+The board is encoded from the current player's perspective. That choice reduces symmetry burden on the model because “own” and “opponent” remain semantically stable.
+
+### `model/guidance.ts`
+
+`getModelGuidance()` performs the browser-side inference bridge:
+
+1. probe `/models/ai-policy-value.onnx` with a `HEAD` request;
+2. lazily import `onnxruntime-web`;
+3. encode the current state;
+4. run the model;
+5. extract policy logits and optional value scalar;
+6. mask policy priors down to legal actions;
+7. return `AiModelGuidance`, or `null` on any failure.
+
+Two intentional nuances matter here:
+
+- if the model file is absent, the AI silently falls back to search-only play;
+- `valueEstimate` is surfaced for diagnostics/tests today, but the runtime search does not currently inject it into evaluation.
+
+Likewise, `AiModelGuidance` can theoretically carry a model-supplied `strategicIntent`, but the current ONNX bridge returns `strategicIntent: null`; the search therefore falls back to heuristic intent inference from `strategy.ts`.
+
+## Training Pipeline
+
+The offline model path is intentionally simple and reproducible.
 
 ```mermaid
 flowchart TD
-  A["Evaluate position for player P"] --> B{"Game already over?"}
-  B -- "Yes" --> C["Return +/- 1,000,000 or 0"]
-  B -- "No" --> D["Count structural signals on the board"]
-  D --> E["Count mobility and jump pressure"]
-  E --> F["Apply fixed weights"]
-  F --> G["Return one combined score"]
+  A["scripts/ai-selfplay-dataset.ts"] --> B["JSONL dataset"]
+  B --> C["training/train_policy_value.py"]
+  C --> D["ONNX export"]
+  D --> E["public/models/ai-policy-value.onnx"]
+  E --> F["model/guidance.ts loads it lazily at runtime"]
 ```
 
-## Difficulty levels
+### Self-play dataset generation
 
-The three difficulty levels are exact product presets, not vague labels.
+[`scripts/ai-selfplay-dataset.ts`](../../scripts/ai-selfplay-dataset.ts) does four important things:
 
-### Easy
+- generates games by repeatedly calling `chooseComputerAction()`;
+- stores the chosen root candidates as a sparse policy target;
+- stores terminal outcomes as value targets;
+- mirrors states horizontally to double the dataset and encourage symmetry learning.
 
-- `120ms`
-- max depth `2`
-- all tactical moves + top `8` quiet moves
-- randomly selects among top `3` moves within `8%` of best score
+It uses:
 
-### Medium
+- `drawRule: 'threefold'`
+- `scoringMode: 'off'`
+- deterministic seeded randomness per game index
 
-- `400ms`
-- max depth `4`
-- all tactical moves + top `16` quiet moves
-- randomly selects among top `2` moves within `3%` of best score
+### Training script
 
-### Hard
+[`training/train_policy_value.py`](../../training/train_policy_value.py) trains a small residual policy/value network:
 
-- `1200ms`
-- max depth `6`
-- all tactical moves + top `28` quiet moves
-- deterministic best move
+- input planes: `16`
+- board size: `6x6`
+- residual body: `4` residual blocks, `32` channels
+- policy head: dense logits over `2_736` action indices
+- value head: scalar `tanh` output
+- loss: policy cross-entropy against sparse targets plus MSE for value
+- optimizer: `AdamW`
 
-The controlled randomness on easier levels prevents the AI from feeling perfectly scripted while still keeping it reasonable.
+This path is modest on purpose. The runtime search remains the main intelligence; the model is currently a guidance layer rather than the primary decision-maker.
 
-## Worker model
+## Reporting And Quality Gates
 
-The browser never runs search on the main thread.
+### Search and behavior tests
 
-The worker wrapper is intentionally thin:
+Important test files:
 
-- receive the search request;
-- call `chooseComputerAction()`;
-- return either `{ type: 'result' }` or `{ type: 'error' }`.
+- [`search.behavior.test.ts`](./search.behavior.test.ts)
+- [`search.timeout.test.ts`](./search.timeout.test.ts)
+- [`search.soak.test.ts`](./search.soak.test.ts)
+- [`search.variety.test.ts`](./search.variety.test.ts)
+- [`model.test.ts`](./model.test.ts)
 
-The store owns lifecycle concerns:
+These cover:
 
-- creating the worker lazily;
-- cancelling by terminating/recreating it;
-- dropping stale responses by `requestId`;
-- retrying after failure;
-- rescheduling after undo, redo, import, restart, or rule changes.
+- fallback behavior under timeout;
+- ordering behavior;
+- candidate-list stability;
+- long playout stability;
+- model encoding and ONNX fallback behavior.
 
-This separation is important for UX:
+### Variety and quality metrics
 
-- the board stays interactive and repainting while the AI thinks;
-- the search can be cancelled cleanly by killing the worker;
-- stale answers from an old position never leak into the live match.
+[`test/metrics.ts`](./test/metrics.ts) defines the offline vocabulary for AI quality reports. It is not runtime code, but it is part of the repository's intellectual model of “good play.”
 
-## Why this engine and not MCTS or neural self-play
+It measures, among other things:
 
-This project needs a practical local AI now, not a research pipeline.
+- opening entropy and opening diversity;
+- two-ply undo rate;
+- repetition share and stagnation windows;
+- decompression and mobility-release slopes;
+- drama, tension, and composite interestingness;
+- behavior-space coverage and novelty score.
 
-This game currently benefits more from:
+Those metrics feed [`scripts/ai-variety.report.ts`](../../scripts/ai-variety.report.ts), which writes `output/ai/ai-variety-report.{json,md}` and can fail the process on regression.
 
-- fast exact legality,
-- tactical search,
-- explicit heuristics,
-- deterministic worker integration,
-- easy testability.
+### Performance reports
 
-Pure rollout MCTS would spend too much time on noisy playouts, and a neural pipeline would add training, data, model packaging, and inference complexity that is not justified for this scope.
+[`scripts/domainPerformance.report.ts`](../../scripts/domainPerformance.report.ts) and [`scripts/perf-report.mjs`](../../scripts/perf-report.mjs) benchmark both the engine and the shipping browser build. This matters because the AI is designed for a browser worker, not a server with unlimited compute.
 
-## Extending the AI later
+## File-By-File Summary
 
-Likely next upgrades, in order:
+| File | Main exported functions | Bigger reason it exists |
+| --- | --- | --- |
+| [`evaluation.ts`](./evaluation.ts) | `evaluateStructureState`, `evaluateState` | Converts position semantics into scalar scores |
+| [`moveOrdering.ts`](./moveOrdering.ts) | `orderMoves` | Makes alpha-beta practical by searching promising moves first |
+| [`participation.ts`](./participation.ts) | `buildParticipationState`, `getParticipationScore`, `getActionParticipationProfile` | Rewards broader, less repetitive material participation |
+| [`strategy.ts`](./strategy.ts) | `analyzePosition`, `getStrategicIntent`, `getStrategicScore`, `getActionStrategicProfile` | Captures game-specific strategic structure |
+| [`presets.ts`](./presets.ts) | `AI_DIFFICULTY_PRESETS` | Encodes product difficulty policy as data |
+| [`types.ts`](./types.ts) | AI request/result contracts | Stable protocol surface |
+| [`search/rootSearch.ts`](./search/rootSearch.ts) | `chooseComputerAction` | Full search orchestration and fallback policy |
+| [`search/negamax.ts`](./search/negamax.ts) | `negamax` | Core recursive alpha-beta search |
+| [`search/quiescence.ts`](./search/quiescence.ts) | `quiescence`, `getQuiescenceMoves` | Tactical leaf stabilization |
+| [`search/result.ts`](./search/result.ts) | diagnostics/result shaping helpers | Turns internal ranking into public result objects |
+| [`search/heuristics.ts`](./search/heuristics.ts) | heuristic coordination helpers | Shared heuristics across root and inner search |
+| [`search/shared.ts`](./search/shared.ts) | timeout/action-key utilities | Common protocol helpers |
+| [`model/actionSpace.ts`](./model/actionSpace.ts) | action-space encoding helpers | Bridge between domain actions and policy head indices |
+| [`model/encoding.ts`](./model/encoding.ts) | `encodeStateForModel` | Bridge between engine state and tensor input |
+| [`model/guidance.ts`](./model/guidance.ts) | `getModelGuidance` | Optional runtime inference layer |
+| [`worker/ai.worker.ts`](./worker/ai.worker.ts) | worker message bridge | Browser integration boundary |
 
-1. tune weights from self-play logs;
-2. add lightweight opening preferences;
-3. improve repetition and draw awareness in evaluation;
-4. add benchmark fixtures and node-per-second reporting;
-5. support background analysis mode for hints and replays.
+## Intentional Non-Goals
 
-Keep the same architectural split:
+This package deliberately does **not**:
 
-- domain = rules,
-- AI = evaluation + search,
-- store and UI = orchestration.
+- own turn scheduling or stale-request cancellation logic; that belongs to the store;
+- know anything about rendering, localization, or tooltips;
+- mutate application state directly;
+- define move legality independently from the domain engine;
+- require the ONNX model to exist.
+
+That restraint is why the AI code remains understandable. It is free to focus on move selection rather than application orchestration.
+
+## Algorithmic Lineage And References
+
+The repository code does not embed a formal bibliography, so the list below should be read as the closest academic lineage for the techniques that are visibly implemented here, not as a claim that the project is a direct reproduction of any single paper.
+
+| Technique visible in this repo | Closest reference |
+| --- | --- |
+| Alpha-beta search / negamax-style zero-sum pruning | Donald E. Knuth and Ronald W. Moore, “An Analysis of Alpha-Beta Pruning,” *Artificial Intelligence* 6(4), 1975. DOI: `10.1016/0004-3702(75)90019-3`. |
+| Iterative deepening under bounded search budgets | Richard E. Korf, “Depth-first Iterative-Deepening: An Optimal Admissible Tree Search,” *Artificial Intelligence* 27(1), 1985. DOI: `10.1016/0004-3702(85)90084-0`. |
+| Null-window / principal-variation-style search refinement | Murray Campbell and Tony Marsland, “A Comparison of Minimax Tree Search Algorithms,” *Artificial Intelligence* 20(4), 1983. DOI: `10.1016/0004-3702(83)90037-5`. |
+| Quiescence search to stabilize tactical leaves | Larry Harris, “The Heuristic Search and the Game of Chess: A Study of Quiescence, Sacrifices, and Plan Oriented Play,” *IJCAI 1975*. |
+| History heuristic family of move-ordering improvements | Jonathan Schaeffer, “The History Heuristic and Alpha-Beta Search Enhancements in Practice,” *IEEE Transactions on Pattern Analysis and Machine Intelligence* 11(11), 1989. DOI: `10.1109/34.42847`. |
+| Policy/value self-play guidance as conceptual lineage for the offline model path | David Silver et al., “Mastering the game of Go without human knowledge,” *Nature* 550, 2017. DOI: `10.1038/nature24270`. |
+| Residual network architecture used in the training script | Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun, “Deep Residual Learning for Image Recognition,” *CVPR 2016*. |
+
+Useful primary links:
+
+- [Knuth and Moore 1975](https://charlesames.net/references/DonaldKnuth/alpha-beta.html)
+- [Korf 1985 PDF](https://www.bibsonomy.org/bibtex/15367f883b60b7da6dedad7b5bd0e7cea)
+- [Campbell and Marsland 1983](https://doi.org/10.1016/0004-3702(83)90037-5)
+- [Harris 1975 PDF](https://www.ijcai.org/Proceedings/75-1/Papers/059.pdf)
+- [Schaeffer 1989](https://doi.org/10.1109/34.42847)
+- [Silver et al. 2017](https://www.nature.com/articles/nature24270)
+- [He et al. 2016 PDF](https://www.cv-foundation.org/openaccess/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html)
+
+The key takeaway is that this AI is intentionally hybrid: classical tree search does the hard tactical work, while domain-specific heuristics and optional neural priors improve ordering and style without replacing the deterministic rule engine underneath.
